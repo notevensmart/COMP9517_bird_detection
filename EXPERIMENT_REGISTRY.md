@@ -567,3 +567,19 @@ Most important **architecture implication:** cannot justify one 64×64 distorted
 **Real JPEG visual review of** `visual/selective_top20.jpg`, `visual/log_top20.jpg` (actual original images with green GT, blue TP, red FP): `beach_bird_1389` rises from **3→9** correct detections among top20 /16 GT; `beach_bird_1560` rises **4→5** /7 GT but nested red overlapping loose boxes persist; `beach_bird_1419` remains **0/5 top20** in dense reeds, both methods fail; `beach_bird_1379` (GT0) remains **20/20 red** detections on dark seaweed/wrack. Selective Search can generate large false rectangles across sand/waves/seaweed, so visual positives do not justify unrestricted promotion.
 
 **Decision:** This is the first major controlled architectural gain since EDA. Keep Selective Search as the **leading proposal architecture** for research branch; do not claim >30% or replace final detector yet. Freeze current configuration and validate on a **larger held-out VAL subset**, then attack FP ranking/duplicate proposals with *TRAIN-only* geometry-aware classification and explicit confidence calibration; consider a scale-aware small-object supplemental branch with a constrained proposal budget. No TEST accessed.
+
+
+## E31-C — four standalone strictly classical classifier benchmark (COMPLETE; distinct from E31-SS)
+
+**Success:** [Actions 43820800202](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43820800202), [prediction overlays/CSV/JSON artifact 14204626929](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43820800202/artifacts/14204626929), [complete measured analysis](CLASSIFIER_COMPARISON_REPORT.md). Exactly **45 annotated-positive TRAIN images / 30 VAL images / 156 annotated VAL birds**; fixed GT+jitter 1232 positive and 846 safe-negative TRAIN patches; same 64x64 HOG+LBP features, ~959 LoG/Otsu candidates/image, NMS=.35, COCO 101pt bbox mAP50 maxDets100. No extra mining, VAL hyperparameter tuning, neural models or TEST access.
+
+| Single-stage classifier | COCO mAP50 | TP/600 top20 | FP/600 top20 |
+|---|---:|---:|---:|
+| Linear SVM | 4.1925% | 39 | 561 |
+| RBF SVM | 5.4572% | 46 | 554 |
+| Random Forest | 5.8840% | 45 | 555 |
+| LightGBM | **6.5644%** | 44 | 556 |
+
+**Actual image review:** Every model fails whole-bird localization on large swans `1399` and the close-up bird `1509`, ranks seaweed `1379` and drone components `1606` as birds, misses many birds in vegetation `1419`, and creates nested partial-bird detections `1560`. In densely populated `1452` (26 GT), Linear SVM recovered 6 top20 TPs, RBF/RF/LightGBM **zero**. `1435` has official GT=0 **despite visible shorebirds**, so some red predictions are annotation-driven official FPs, not visually certain errors.
+
+**Decision:** Keep this ablation as a measured negative/mixed result; LightGBM is highest AP among these *standalone* models but does not solve the classical detector. The distinct E31-SS Selective Search+RBF stage-2 approach already measured **17.18%** mAP in a different controlled full-pipeline comparison and remains the stronger research branch. Learn from E19 and the Selective Search union failure: increasing candidate recall alone can reduce mAP; address spatially aligned regions, size-conditioned crowd recall, and difficult-scene ranking jointly. Confirm on larger held-out VAL before final TEST.
