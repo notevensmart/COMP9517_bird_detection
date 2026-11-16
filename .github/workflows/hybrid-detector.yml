@@ -1,0 +1,48 @@
+name: Full Classical Hybrid Bird Detector mAP50
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/hybrid_detector_eval.py'
+      - '.github/workflows/hybrid-detector.yml'
+jobs:
+  hybrid:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install classical vision and official COCO evaluator
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'pycocotools>=2.0.8,<3'
+      - name: Validate geometry, jitter, and evaluator
+        run: |
+          python src/hybrid_detector_eval.py --self-test
+          python src/metrics_map.py
+      - name: Download public bird dataset
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import kagglehub
+          root=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          matches=[q.parent.parent for q in root.rglob('images/train') if (q.parent.parent/'labels/train').is_dir() and (q.parent.parent/'images/val').is_dir()]
+          if (root/'images/train').is_dir():matches.append(root)
+          matches=list(dict.fromkeys(matches))
+          assert len(matches)==1,matches
+          Path('dataset_root.txt').write_text(str(matches[0]))
+          PY
+      - name: Train and evaluate hybrid classical detector with visual audits
+        run: python -u src/hybrid_detector_eval.py --dataset "$(cat dataset_root.txt)" --output hybrid_results --train-limit 100 --val-limit 30
+      - name: Preserve all classical detector metrics and annotated images
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hybrid-classical-bird-detector
+          path: hybrid_results/
+          if-no-files-found: warn
+          retention-days: 14
