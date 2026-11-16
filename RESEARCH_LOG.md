@@ -197,3 +197,23 @@ After E23's spatially diverse negatives failed the improvement gate, trained a s
 - Historical experiments' training populations and feature samplers differ. Do not compare raw scores across E31 and E25 as a causal paired test.
 
 **Status:** Experiment script and cloud workflow committed; **numerical results must only be added after verifying successful execution and reviewing the artifact**. If a method fails, preserve its traceback and partial results. Do not choose a model for full training solely from one small validation subset; confirm on larger frozen VAL sample and visually audit its characteristic failures first.
+
+
+## E31-C completed — four classical classifier algorithms, fixed 45 TRAIN / 30 VAL, real-image QA (16 Nov 2026)
+
+[Successful E31-C run 43820800202](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43820800202), [actual full-resolution model prediction artifact 14204626929](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43820800202/artifacts/14204626929), [review with reproducibility details](CLASSIFIER_COMPARISON_REPORT.md). This is classifier-only **E31-C**, distinct from the existing **E31-SS** Selective Search architecture study.
+
+Four algorithms used **exactly the same** LoG/Otsu candidate bank, 1924-D resized 64x64 HOG+LBP descriptors, 1232 GT+jitter positives, 846 safe TRAIN negative patches, IoU=.35 NMS and 30 VAL images/156 official GT birds, with no hard mining or hyperparameter sweep and no TEST access. Official COCO 101-point single-class bbox mAP@.5 (maxDets100):
+
+| Standalone model | mAP@.5 | TP/600 top20 | FP/600 top20 | mean scoring + NMS sec/image |
+|---|---:|---:|---:|---:|
+| Linear SVM | 4.1925% | 39 | 561 | .0194 |
+| RBF SVM | 5.4572% | **46** | **554** | .7890 |
+| Random Forest | 5.8840% | 45 | 555 | .0657 |
+| LightGBM | **6.5644%** | 44 | 556 | .0218 |
+
+**LightGBM improves AP +2.37pp vs Linear SVM in this paired small-subset comparison, but no variant is good enough.** RBF has slightly better top20 ranking TP count, while much slower at inference. All models achieve ~99–100% training-patch accuracy and yet rank >550/600 top20 boxes as FPs by official GT. On the one sampled crowded image `beach_bird_1452` (26 GT), only Linear SVM finds 6 birds in top20; **RBF/RF/LightGBM find zero**.
+
+**Actual visual inspection of eight original-image side-by-side comparisons:** `1379` gets 20 seaweed/debris false alarms per model; `1399` both large swans are missed while all models score beak/neck/body subparts; `1419` reed/vegetation FPs dominate and many waterbirds are missed; `1560` bird parts produce nested red detections; `1509` lone close-up bird misses GT while head/body subpart boxes score highly; `1606` drone parts are hard background confusers; `1452` shows serious loss of small crowded birds under all nonlinear models; `1435` **official GT=0 but visually contains many shorebirds**, so predictions marked official FP in that image are not all real semantic mistakes. Do not change official annotations; track QA separately.
+
+**Decision:** Classifier-only experiments are not enough. Do NOT select LightGBM as a full-detector winner or automatically upscale to 1369 TRAIN. Learn from prior E14/E19/E23/E27 failures: more data/negatives or more geometric candidates did not solve appearance ranking. The *separate* E31-SS pipeline scored **17.18%** mAP on the same 45/30 size using Selective Search + nonlinear stage-2 handcrafted verifier, compared to its own matched LoG control **6.56%**. That proposal/alignment gain greatly exceeds the classifier-only improvement. **Prioritize the E31-SS branch**, verify with larger held-out VAL and study explicit geometry/scale/background errors, using TEST only after all choices are frozen. This is an evidence-based choice, not a claim of reaching 30%+ mAP.
