@@ -41,6 +41,8 @@ jobs:
           PY
       - name: Run reproducible quick audit
         run: python src/cloud_audit.py --dataset "$(cat dataset_root.txt)" --output artifacts --train-limit 80 --val-limit 20
+      - name: Audit multiscale anchors and edge pruning
+        run: python src/anchor_proposals.py --dataset "$(cat dataset_root.txt)" --output artifacts --val-limit 20
       - name: Tiny-set overfitting gate
         run: python src/tiny_overfit.py --dataset "$(cat dataset_root.txt)" --output artifacts
       - name: Upload diagnostics and results
