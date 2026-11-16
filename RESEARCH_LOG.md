@@ -79,3 +79,27 @@ Earlier tiny-set hard-negative mining reduced mean false positives from 298.3 to
 `src/detection_postprocess.py` strictly applies a score threshold, final NMS and an upper bound of 150 returned boxes. SVM margin is **not a probability**; a chosen threshold must be calibrated on validation and then frozen. The strict final limit is only a safeguard, not an expectation that images contain 150 birds.
 
 `src/spatial_detector_tiny.py` integrates the selected spatial budget, hard-negative mining and final output filtering on the tiny training set. Its end-to-end results must be reported from its cloud-run logs, not predicted from proposal recall.
+
+
+## Stage G — Integrated spatial proposal, classifier and final-box gate (measured)
+
+Run [Spatial Pruning Benchmark / integrated tiny detector](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43788148237) completed successfully, including unit tests for the final detection filter.
+
+For exactly the same **three training images** (six annotated birds), `spatial_200` generated **5,334 candidates/image**. Their proposal recall on these images was **83.33%** (different from the 83.49% validation-subset coverage), so even a perfect classifier cannot detect the missing sixth bird with these fixed candidates.
+
+Hard-negative mining and a 150-output cap were used with final NMS. Selected diagnostic rounds:
+
+| Mining round | Mean final detections/image (SVM margin>=0) | Mean final FP/image | Tiny-train AP50 |
+|---|---:|---:|---:|
+| 0 | 150.0 | 148.67 | 18.75% |
+| 1 | 92.67 | 90.67 | **37.10%** |
+| 2 | 17.0 | 14.67 | 33.33% |
+| 6 | **14.0** | **11.33** | 36.51% |
+
+For the stricter **margin >= 1.0** diagnostic:
+- Round 1: 5.0 final detections/image, 4.0 false positives/image, 29.17% tiny-train AP50.
+- Round 6: 2.0 final detections/image, 1.33 false positives/image, 13.89% tiny-train AP50.
+
+All figures are from **training images only**; they are not held-out validation mAP. They demonstrate that reducing output count requires a precision/recall trade-off. Margin 1.0 was **not** selected as a calibrated deployment threshold. Hard-negative mining helps but the tiny overfitting gate remains **FAILED**: no setting reaches 90% raw-image train AP50.
+
+**Current decision:** use spatially balanced 200-per-scale proposals as the efficient *research candidate generator*, keep GT-free inference, final NMS, score threshold and max-detection safeguards, but DO NOT claim the current HOG/SVM classifier is deployment-ready or ready for full training. Next improvements should focus on a more discriminative classifier, better small-object representation and box regression or a suitable learned detector. A final threshold must be chosen using validation and frozen before one-time test evaluation.
