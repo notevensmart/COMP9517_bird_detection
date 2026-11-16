@@ -237,3 +237,20 @@ These visuals are actual JPEGs archived in the artifact. **Legend:** blue boxes 
 **Hypothesis:** The maximum LoG+Otsu width is too small for many medium/large bird GT boxes. Supplement existing small-scale proposals with deterministic image-only edge-ranked large anchors of sizes 96,144,192,256,384,512 pixels and aspect ratios 0.45,0.7,1,1.5,2.2, selected using per-shape spatial balance (50 candidates/shape maximum). Report LoG-only, large-only and hybrid-union candidate recall@.5/.75, split into small (<1024 px²), medium (1024–9999 px²) and large (>=10000 px²) GT objects, candidate count/image, and example overlays. All method proposals are GT-blind and all methods evaluate the exact same fixed 30 VAL images.
 
 **Source:** `src/multiscale_coverage.py`, `.github/workflows/multiscale-coverage.yml`; run to be recorded after completion. Proposal recall is not detection mAP; subsequent SVM training must be measured separately.
+
+
+### E18 actual scale-coverage validation and visual verification
+
+[Successful GitHub Actions run 43798486226](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43798486226), [ZIP result artifact](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43798486226/artifacts/14195192223). Tested identical 30 VAL images (156 GT birds) and GT-blind proposals. The original sigma<=18 LoG+Otsu spans too few large-object sizes. Supplement with edge-ranked, spatially balanced 96..512-pixel scales and five ratios; then union.
+
+| Proposal method | Boxes/image | Recall@IoU.5 | Recall@IoU.75 | Small R50 (46 birds) | Medium R50 (51) | Large R50 (59) |
+|---|---:|---:|---:|---:|---:|---:|
+| Original LoG/Otsu | 959 | 73.08% | 19.23% | 91.30% | 78.43% | 54.24% |
+| Large-window grid alone | 961 | 39.10% | 11.54% | 0% | 17.65% | 88.14% |
+| **Hybrid small+large union** | **1,920** | **90.38%** | **30.13%** | **91.30%** | **86.27%** | **93.22%** |
+
+The union raises recall50 by **17.31 percentage points** and large-bird recall by **38.98 points**; stronger evidence of a geometry defect than previous generic feature speculation. Real overlay `beach_bird_1399_hybrid_gt_green_candidates_blue.jpg` now shows medium/large blue proposals overlapping the full green swan bird GT rectangles (earlier small LoG could only select part crops). Additional crowded beach overlays are archived. These are PROPOSAL metrics, not deployable mAP. The extra ~961 candidates/image are a legitimate additional classification and latency cost.
+
+### E19 planned end-to-end hybrid-classical detector test
+
+**Run:** [GitHub Actions 43798829411](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43798829411), code `src/hybrid_detector_eval.py`, workflow `hybrid-detector.yml`. Same 100 TRAIN/30 VAL seeded image subset as E17, same HOG+LBP LinearSVC, GT+jitter positives, safe negatives and two full-image mined-negative rounds; swap **ONLY the GT-blind proposal strategy** to hybrid LoG+Otsu+balanced large-window edge proposals. Evaluate COCO 101-point single-class bbox mAP@.5, NMS .35/.65, full FP/FN taxonomy and 6 real annotated visual examples. Compare E17 and E19 cautiously because negative selection changes when proposal pool changes. No test data used. **Status at registration: running, no verified mAP yet.**
