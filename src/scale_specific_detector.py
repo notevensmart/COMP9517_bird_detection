@@ -142,25 +142,38 @@ def build_models(samples,scale_aware,color,rounds=2):
     return models,hist
 
 def calibrate(models,heldout,scale_aware,color):
-    """Calibrate each specialist only using disjoint TRAIN images.
-    Limiting per-image safe negative calibration windows prevents absurdly
-    confident background scores from overwhelming rare positives."""
+    """Proposal-domain calibration from separate TRAIN images.
+
+    Use *actual generated proposals*, not ideal GT-jitter patches, to match
+    inference score distributions. Natural imbalance: no balanced class weight.
+    GT on these TRAIN calibration images labels samples but never affects box
+    generation or final evaluation on VAL. Positive = candidate IoU >=.5;
+    negative = GT-safe candidate IoU<.1 and containment<.5.
+    """
     dim=1940 if color else 1924
-    sampled=sample_training(heldout,True,seed=89)
-    if not scale_aware:
-        sampled={"all":{"pos":np.concatenate([sampled[k]["pos"] for k in range(3)]),
-                        "neg":np.concatenate([sampled[k]["neg"] for k in range(3)])}}
+    rng=np.random.default_rng(89)
     calibrators={};history=[]
     for key,model in models.items():
-        p=sampled[key]["pos"][:,:dim];n=sampled[key]["neg"][:,:dim]
-        if not len(p) or not len(n):raise RuntimeError(f"No calibration samples scale {key}")
-        margins=np.r_[model.decision_function(p),model.decision_function(n)].reshape(-1,1)
-        labels=np.r_[np.ones(len(p)),np.zeros(len(n))]
-        cal=LogisticRegression(C=1.,class_weight="balanced",random_state=42,max_iter=300)
+        pos=[];neg=[]
+        for r in heldout:
+            good=r["pos"];bad=r["neg"]
+            if key!="all":
+                good=good[r["scale"][good]==key]
+                bad=bad[r["scale"][bad]==key]
+            if len(good)>50:good=rng.choice(good,50,replace=False)
+            if len(bad)>200:bad=rng.choice(bad,200,replace=False)
+            if len(good):pos.extend(model.decision_function(r["features"][good,:dim]).tolist())
+            if len(bad):neg.extend(model.decision_function(r["features"][bad,:dim]).tolist())
+        if len(pos)<5 or len(neg)<20:
+            raise RuntimeError(f"Scale {key} lacks enough real calibration proposals: positive {len(pos)}, negative {len(neg)}")
+        margins=np.r_[pos,neg].reshape(-1,1)
+        labels=np.r_[np.ones(len(pos)),np.zeros(len(neg))]
+        cal=LogisticRegression(C=1.,class_weight=None,random_state=42,max_iter=500)
         cal.fit(margins,labels)
         calibrators[key]=cal
-        history.append(dict(scale=str(key),calibration_positive=len(p),
-                            calibration_negative=len(n),
+        history.append(dict(scale=str(key),calibration_positive=len(pos),
+                            calibration_negative=len(neg),
+                            empirical_positive_fraction=float(np.mean(labels)),
                             sigmoid_coefficient=float(cal.coef_[0,0]),
                             sigmoid_intercept=float(cal.intercept_[0])))
     return calibrators,history
@@ -198,15 +211,22 @@ def evaluate(models,cals,val,color=True,nms_iou=.5,visual_dir=None):
         # 0.5 probability threshold for operating point FP/FN counts.
         active=sc>=.5
         err=classification_errors(b[active],sc[active],r["gt"])
+        top=min(20,len(b))
+        top20=classification_errors(b[:top],sc[:top],r["gt"])
         rows.append(dict(image=r["path"].name,GT=len(r["gt"]),proposals=len(r["boxes"]),
-                         after_nms=len(b),probability05=int(active.sum()),**err))
-        illustrations.append(dict(path=r["path"],gt=r["gt"],boxes=b[active],scores=sc[active],
+                         after_nms=len(b),probability05=int(active.sum()),
+                         FP_top20=top20["FP_total"],FN_top20=top20["FN"],**err))
+        # For visual ranking QA draw top-20 candidates even if none passes .5.
+        # Retain margin0.5 FP/FN as a distinct, explicitly labeled statistic.
+        illustrations.append(dict(path=r["path"],gt=r["gt"],boxes=b[:top],scores=sc[:top],
                                   err=rows[-1],orig_boxes=r["boxes"]))
     metric=evaluate_map50(preds)
     metric.update(FP_total_p05=sum(x["FP_total"] for x in rows),
                   FP_background_p05=sum(x["FP_background"] for x in rows),
                   FP_localization_p05=sum(x["FP_localization"] for x in rows),
                   FN_p05=sum(x["FN"] for x in rows),
+                  FP_top20=sum(x["FP_top20"] for x in rows),
+                  FN_top20=sum(x["FN_top20"] for x in rows),
                   mean_proposals=float(np.mean([len(r["boxes"]) for r in val])),
                   GT_count=int(sum(len(r["gt"]) for r in val)))
     if visual_dir:
