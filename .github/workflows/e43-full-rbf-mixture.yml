@@ -47,7 +47,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e43-full-train-rbf-augmentation-results
+          name: e43-full-train-rbf-mixture-results
           path: e43_results/
           retention-days: 14
           if-no-files-found: warn
