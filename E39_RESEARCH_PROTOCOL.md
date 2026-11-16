@@ -36,3 +36,10 @@ Compare COCO 101-point bbox AP50, top20 TP/FP, small/crowded top100 recall and a
 ## Prior failures explicitly avoided
 
 E19 and E38 showed extra proposals can reduce mAP even when raw recall rises. E34 showed tree classifier replacement alone reduced mAP. E23/E27 showed indiscriminate extra negatives can hurt. E36 exposed stochastic first-1200 candidate selection; E39 derives from E37's deterministic cap. Train patch accuracy is diagnostic only; class prediction is evaluated with final ranked detection AP, not training accuracy. Every successful or failed result should be written to a research log and include real image review.
+
+
+## E39 first cloud run failure and correction — 16 Nov 2026
+
+[Failed run 43852165545](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43852165545) ran all synthetic preprocessing and geometry tests, generated 42,079 TRAIN and 33,612 VAL feature vectors (176-D, zero nonfinite), and generated 2,118 TRAIN-only augmented patches (1,038 positive, 1,080 negative). It then failed **before validation scoring** with `ValueError: not enough values to unpack (expected 4, got 3)` at `fit_boosters`: the caller had intentionally passed `augmented[:3]`, while the fitting function incorrectly requested four values. This is a programmer interface-contract mistake, not evidence that preprocessing or LightGBM performs poorly. No mAP for E39 is available from that failed run.
+
+**Fixed:** `fit_boosters` now explicitly accepts exactly three arrays (features, class labels, native candidate areas) with length, shape and finite checks before model fitting; added self-test contract check. The [E39 rerun](https://github.com/notevensmart/COMP9517_bird_detection/actions/workflows/e39-scale-boosting.yml) uses identical predeclared TRAIN/VAL partitions, features, augmentation modes and classifier hyperparameters. Do not tune the model based on this integration error. Keep failed-run evidence as an audit trail.
