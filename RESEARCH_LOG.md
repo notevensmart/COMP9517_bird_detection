@@ -128,3 +128,18 @@ Measured [GitHub Actions 43792817123](https://github.com/notevensmart/COMP9517_b
 **Best results (round 3, held-out validation subset):** global **11.73% COCO mAP@.5, 305 FP, 44 FN**; diverse-only **10.83%, 316 FP, 43 FN**; diverse+hard positives **11.64%, 333 FP, 43 FN**; bounded cache **9.82%, 345 FP, 45 FN**. FP/FN counts use final NMS detections at margin≥0, whereas mAP uses all ranked candidate scores capped by COCO maxDets=100. Performance was nonmonotonic: round 1 dropped below initial 7.59% in every variant, before recovering in later rounds. 
 
 **Decision:** global mining remains best on this limited validation sample. A third mining round improves on the previously tested two-round global result (8.82%), but neither candidate diversity, hard-positive weights, nor bounded-cache selection outperformed the global strategy. Keep the failed ablations in the report, and avoid overfitting to a 12-image development split. Plan larger split and localisation-focused diagnostics before final test evaluation. More mining may have diminishing returns, and none of the models currently meets 50% mAP.
+
+
+## Stage J — Learning curve versus training data, same validation set (16 Nov 2026)
+
+Completed [GitHub Actions run 43793628053](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43793628053), with [figure and result bundle](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43793628053/artifacts/14193349564). Nested TRAIN samples 35/100/300/700/full 1,369, fixed VAL 60 images containing 376 bird annotations, 3 hard-negative mining rounds for every N, no test usage, primary metric official COCO 101-point bbox mAP@.50 (maxDets=100). Bounded positive and safe-negative training feature selection makes this **different from** earlier 35-image E14.
+
+| TRAIN N | Validation mAP@.5 | False boxes @margin0 | Missed birds @margin0 |
+|---:|---:|---:|---:|
+| 35 | 7.49% | 3,630 | 220 |
+| 100 | 6.54% | 2,970 | 224 |
+| 300 | 9.78% | 2,697 | 221 |
+| 700 | 11.25% | 2,997 | 203 |
+| 1,369 | 11.29% | 3,004 | 204 |
+
+This experiment tests training-data sufficiency: mAP rises mostly between 100 and 700 but plateaus after 700 (+0.043 percentage points to full 1369). A larger data set alone **does not repair the current detector**. Data contains scenes with dense flocks and small birds; the existing LoG/Otsu candidates have limited localisation accuracy and HOG/LBP linear SVM scores still rank many textured backgrounds above birds. The full-train model produces 2,078 background FP, 920 localisation FP, and 6 duplicate FP at margin 0 on the 60 VAL images. Keep failure cases and runtime trade-offs in the discussion; future work should be localisation- and feature-based, not uncontrolled hard-mining rounds. The output bundle includes actual PNG mAP/error curves and CSV of each round.
