@@ -1,0 +1,48 @@
+name: EdgeBoxes versus Spatial Proposals
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/edgeboxes_benchmark.py'
+      - '.github/workflows/edgeboxes.yml'
+jobs:
+  compare-proposals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install OpenCV contrib and analysis dependencies
+        run: |
+          sed 's/^opencv-python-headless/opencv-contrib-python-headless/' requirements.txt > /tmp/edge_requirements.txt
+          python -m pip install -r /tmp/edge_requirements.txt
+      - name: Verify EdgeBoxes implementation
+        run: python src/edgeboxes_benchmark.py --self-test
+      - name: Download public dataset and pretrained structured-edge model
+        run: |
+          python - <<'PY'
+          import kagglehub, urllib.request
+          from pathlib import Path
+          p=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          roots=[q.parent.parent for q in p.rglob('images/train') if (q.parent.parent/'labels/train').is_dir() and (q.parent.parent/'images/val').is_dir()]
+          if (p/'images/train').is_dir():roots.append(p)
+          roots=list(dict.fromkeys(roots))
+          assert len(roots)==1,roots
+          Path('dataset_root.txt').write_text(str(roots[0]))
+          urllib.request.urlretrieve('https://raw.githubusercontent.com/opencv/opencv_extra/4.x/testdata/cv/ximgproc/model.yml.gz','model.yml.gz')
+          assert Path('model.yml.gz').stat().st_size>100000
+          print('Downloaded structured edge model',Path('model.yml.gz').stat().st_size)
+          PY
+      - name: Measure EdgeBoxes coverage versus spatial anchors
+        run: python src/edgeboxes_benchmark.py --dataset "$(cat dataset_root.txt)" --model model.yml.gz --output edgeboxes_results --val-limit 8
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: edgeboxes-comparison
+          path: edgeboxes_results/
+          retention-days: 14
+          if-no-files-found: warn
