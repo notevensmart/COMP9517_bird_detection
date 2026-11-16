@@ -1,0 +1,46 @@
+name: E30 Full Beach Bird Dataset EDA
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/full_dataset_eda.py'
+      - '.github/workflows/e30-full-dataset-eda.yml'
+jobs:
+  explore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install CV data analysis dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'pycocotools>=2.0.8,<3'
+      - name: Verify EDA metrics
+        run: python src/full_dataset_eda.py --self-test
+      - name: Download dataset
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import kagglehub
+          p=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          roots=[q.parent.parent for q in p.rglob('images/train') if (q.parent.parent/'labels/train').is_dir() and (q.parent.parent/'images/val').is_dir()]
+          if (p/'images/train').is_dir():roots.append(p)
+          roots=list(dict.fromkeys(roots))
+          assert len(roots)==1,roots
+          Path('dataset_root.txt').write_text(str(roots[0]))
+          PY
+      - name: Complete dataset-wide quantitative and visual EDA
+        run: python -u src/full_dataset_eda.py --dataset "$(cat dataset_root.txt)" --output full_dataset_eda
+      - name: Save full statistics, CSV, charts and photo atlas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e30-full-bird-eda
+          path: full_dataset_eda/
+          retention-days: 14
+          if-no-files-found: warn
