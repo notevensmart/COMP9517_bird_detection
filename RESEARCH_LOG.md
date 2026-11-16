@@ -54,3 +54,28 @@ Results should only be added after reading the actual GitHub Actions run logs or
 - Raw geometric candidate recall is not the same as end-to-end detection recall or AP.
 - Validation metrics are exploratory until a frozen model and untouched test evaluation.
 - Full-scale training remains blocked by tiny-set gate; cloud execution success is not model quality.
+
+
+## Stage E — Pruning redundant boxes without discarding birds
+
+A naive global top-scoring/NMS candidate budget was **rejected** after independent measurements: 400 and 800 candidates yielded 0% proposal recall; 1,600 yielded 0.92%; 3,200 yielded 28.44%. Ranking all box shapes together over-concentrated candidates in highly textured regions and destroyed useful proposal diversity. These are experimental failure results, not adopted changes.
+
+A replacement selects candidates per scale/aspect group and distributes them across spatial tiles using only image edges. Benchmark [Spatial Pruning Benchmark](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43787913098), same 20 validation images and 109 birds:
+
+| Spatial proposals | Mean boxes/image | Recall@0.5 | Small-bird recall@0.5 |
+|---|---:|---:|---:|
+| 50 per scale | 1,350 | 71.56% | 41.18% |
+| 100 per scale | 2,700 | 78.90% | 52.94% |
+| **200 per scale (selected)** | **5,334** | **83.49%** | **58.82%** |
+| 300 per scale | 7,734 | 85.32% | 64.71% |
+| 450 per scale | 11,245 | 88.99% | 76.47% |
+
+200-per-scale reduces the candidate count by about 53% versus 450-per-scale with a 5.50 percentage-point reduction in proposal recall. This is a compute/coverage trade-off: **not** proof of better detector AP. It is an exploratory validation-based choice; full evaluation must use an untouched test split once frozen.
+
+## Stage F — Hard negatives and final detections
+
+Earlier tiny-set hard-negative mining reduced mean false positives from 298.3 to 22.0 per image at its best AP iteration, increasing training AP@0.5 from 13.24% to 37.31%. The tiny set consists of 2 positive images plus 1 negative image, not the held-out validation set.
+
+`src/detection_postprocess.py` strictly applies a score threshold, final NMS and an upper bound of 150 returned boxes. SVM margin is **not a probability**; a chosen threshold must be calibrated on validation and then frozen. The strict final limit is only a safeguard, not an expectation that images contain 150 birds.
+
+`src/spatial_detector_tiny.py` integrates the selected spatial budget, hard-negative mining and final output filtering on the tiny training set. Its end-to-end results must be reported from its cloud-run logs, not predicted from proposal recall.
