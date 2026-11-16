@@ -87,7 +87,7 @@ def run(dataset,out,train_n,val_n):
       bounded_map=nm["map50_coco101"],crowd_tp=(bcrowd,ncrowd))),flush=True)
 
 def tests():
-    im=np.zeros((80,80,3),np.uint8)
+    im=np.zeros((128,128,3),np.uint8)
     cv2.rectangle(im,(10,10),(35,32),(255,255,255),-1)
     boxes=small_supplement(im,cap=30,quota_per_tile=4)
     assert boxes.ndim==2 and boxes.shape[1]==4
