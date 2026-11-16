@@ -9,6 +9,8 @@ unchanged for primary benchmark comparability. No TEST image is inspected.
 SUSPECT_TRAIN_EMPTY_LABELS = {
     "beach_bird_0149.jpg": "Visible flying flock; target scope requires review",
     "beach_bird_0418.jpg": "Two visible shorebirds on wet sand",
+    "beach_bird_0690.jpg": "Visible gull-like flying birds near clouds despite zero GT",
+    "beach_bird_1343.jpg": "Several bird-like airborne silhouettes, ambiguous class but unsafe as bird-free negatives",
 }
 SUSPECT_VAL_EMPTY_LABELS = {
     "beach_bird_1435.jpg": "Numerous visible shorebirds on wet sand",
@@ -19,6 +21,8 @@ def unsafe_training_negative(image_name, ground_truth_count):
 
 def tests():
     assert unsafe_training_negative("beach_bird_0418.jpg", 0)
+    assert unsafe_training_negative("beach_bird_0690.jpg", 0)
+    assert unsafe_training_negative("beach_bird_1343.jpg", 0)
     assert unsafe_training_negative("beach_bird_0149.jpg", 0)
     assert not unsafe_training_negative("beach_bird_0418.jpg", 1)
     assert not unsafe_training_negative("beach_bird_1379.jpg", 0)
