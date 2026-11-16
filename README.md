@@ -35,4 +35,13 @@ The [E31 cloud workflow](https://github.com/notevensmart/COMP9517_bird_detection
 - Source: [src/classifier_benchmark.py](src/classifier_benchmark.py)
 - Protocol, historical failures and status: [RESEARCH_LOG.md](RESEARCH_LOG.md)
 - Download run artifact `e31-classical-classifier-results` for `e31_results.json` and `e31_table.csv`.
-- **Results are unverified until the workflow completes.** A high patch-level training accuracy, proposal recall, or workflow success is not evidence of good validation mAP.
+- **Measured results and real prediction overlays are now available in the linked run.** High patch-level training accuracy and proposal recall do not establish good validation mAP.
+
+
+### E31-C measured outcome and actual image review
+
+[Successful reproducible visual run](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43820800202): on 45 TRAIN / 30 VAL (156 GT birds), single-stage COCO AP50 results are Linear SVM **4.19%**, RBF SVM **5.46%**, Random Forest **5.88%**, LightGBM **6.56%**. All remain poor; no neural models were used, TEST remains untouched. Eight real 4-model image overlays show false positives on seaweed/reeds/drones, whole-bird box failures, and nonlinear classifiers missing all top20 birds in a 26-bird crowded scene. `beach_bird_1435.jpg` has zero official labels despite visible birds; do not treat every officially false box as semantically false.
+
+- Full evidence and research decision: [CLASSIFIER_COMPARISON_REPORT.md](CLASSIFIER_COMPARISON_REPORT.md).
+- Real model images, exact metrics and per-image CSV: [GitHub Actions artifact](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43820800202/artifacts/14204626929).
+- The separate E31-SS Selective Search + nonlinear RBF stage-2 detector achieved **17.18%** AP50 on a matched 45/30 study; this is **not** a like-for-like LightGBM-versus-SS comparison, but supports prioritizing proposal alignment rather than a mere classifier swap.
