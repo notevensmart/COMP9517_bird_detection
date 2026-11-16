@@ -225,10 +225,18 @@ def save_visuals(artifacts,bank,selected_variant,report):
     # Cover crowded, negative, many false alarms, poor recall and easy scenes.
     ranked=sorted(results,key=lambda r:-r["FP_total"])
     for row in ranked[:2]:selected.append(row["image"])
-    for row in sorted(results,key=lambda r:-r["GT"])[:2]:selected.append(row["image"])
+    for row in sorted(results,key=lambda r:-r["gt"])[:2]:selected.append(row["image"])
     for row in sorted(results,key=lambda r:r["GT"])[:2]:selected.append(row["image"])
     for row in sorted(results,key=lambda r:-r["TP"])[:2]:selected.append(row["image"])
-    selected=list(dict.fromkeys(selected))[:6]
+    selected=list(dict.fromkeys(selected))
+    # Ensure six distinct views even if priority rankings overlap.
+    for row in sorted(results,key=lambda r:r["image"]):
+        if len(selected)>=6:break
+        if row["image"] not in selected:selected.append(row["image"])
+    selected=selected[:6]
+    if len(selected)%2:
+        selected=selected[:-1]
+    if not selected:raise RuntimeError("No validation images for visual auditing")
     tiles=[];per_image=[]
     for name in selected:
         rec=report[selected_variant]["records"][name]
