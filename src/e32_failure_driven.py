@@ -26,6 +26,7 @@ def regression_features(rec,base,rbf):
     geom=np.column_stack((np.log1p(w),np.log1p(h),np.log(w/h),
                           (b[:,0]+b[:,2])/1024.,(b[:,1]+b[:,3])/1024.))
     m=base.decision_function(rec["X"]).reshape(-1,1)
+    rec["margin"]=m.ravel()  # RBF verifier consumes this TRAIN-derived stage1 score
     r=rbf_logits(rbf,rec).reshape(-1,1)
     result=np.column_stack((rec["aux"],geom,m,r)).astype(np.float32)
     if not np.isfinite(result).all():raise ValueError("Nonfinite regression features")
@@ -131,6 +132,7 @@ def score_bank(val,base,rbf,refiner,out):
         b=rec["boxes"]
         if len(b):
             m=base.decision_function(rec["X"])
+            rec["margin"]=m  # Required by pretrained TRAIN-only PCA+RBF verifier
             score=.5*m+.5*rbf_logits(rbf,rec)
             features=regression_features(rec,base,rbf)
             refined=apply_refiner(b,features,refiner)
