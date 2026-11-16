@@ -18,6 +18,11 @@ def boxes(path,w,h):
         _,cx,cy,bw,bh=v
         b=np.array([cx-bw/2,cy-bh/2,cx+bw/2,cy+bh/2])*[w,h,w,h]
         if np.min(b)<-1e-3 or b[2]>w+1e-3 or b[3]>h+1e-3:raise ValueError(f"out of bounds {path}:{i}")
+        # YOLO normalized labels near image boundaries can round to
+        # -0.000256px. Clip small floating-point drift *before* crop flooring.
+        # Never silently accept genuinely out-of-bounds annotations.
+        b=np.clip(b,[0,0,0,0],[w,h,w,h])
+        if b[2]<=b[0] or b[3]<=b[1]:raise ValueError(f"degenerate clipped label {path}:{i}")
         out.append(b)
     return np.asarray(out,dtype=np.float32).reshape(-1,4)
 
@@ -143,7 +148,13 @@ def self_test():
     assert np.isclose(ap50([(g,np.array([.9]),g)]),1)
     assert np.isclose(ap50([(g+50,np.array([.9]),g)]),0)
     assert len(nms(np.vstack([g,g]),np.array([.9,.8])))==1
-    print("Synthetic IoU, AP50 and NMS checks PASS")
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        p=Path(d)/"border.txt"
+        p.write_text("0 0.16494975 0.43620600 0.32990000 0.25000000\\n".replace("\\\\n","\\n"))
+        clipped=boxes(p,512,512)
+        assert np.min(clipped)>=0 and len(clipped)==1
+    print("Synthetic IoU, AP50, NMS and YOLO border-clipping checks PASS")
 
 if __name__=="__main__":
     ap=argparse.ArgumentParser();ap.add_argument("--dataset",type=Path);ap.add_argument("--output",type=Path,default=Path("artifacts"));ap.add_argument("--train-limit",type=int,default=80);ap.add_argument("--val-limit",type=int,default=20);ap.add_argument("--self-test",action="store_true")
