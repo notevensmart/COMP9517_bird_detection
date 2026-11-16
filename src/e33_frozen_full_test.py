@@ -101,7 +101,7 @@ def run(dataset,out,train_n,candidate,confirm_n):
     train_seconds=time.perf_counter()-tic
     basemetrics,_=eval_split(independent,base,rbf,"baseline_035",None,
                              out/"confirmation"/"baseline", "VAL")
-    candidate_training=None
+    candidate_training=None;candidate_fit_seconds=0.0
     if candidate=="baseline_035":
         select="baseline_035";confirm=None;accepted=True
     else:
@@ -109,9 +109,11 @@ def run(dataset,out,train_n,candidate,confirm_n):
         if candidate=="bounded_small_hybrid":
             # Different proposal domain: re-fit both stages on identical TRAIN
             # identities, never reuse the SS-domain SVM/RBF on hybrid boxes.
+            candidate_fit_start=time.perf_counter()
             alternate_bank=prepare_hybrid(train,"TRAIN")
             trial_base,trial_rbf,candidate_training=fit_models(alternate_bank)
             del alternate_bank;gc.collect()
+            candidate_fit_seconds=time.perf_counter()-candidate_fit_start
         confirm,_=eval_split(independent,trial_base,trial_rbf,candidate,refiner,
                             out/"confirmation"/"candidate","VAL",lightgbm=lightgbm)
         accepted=pass_confirmation(basemetrics,confirm)
@@ -123,7 +125,9 @@ def run(dataset,out,train_n,candidate,confirm_n):
           chosen_candidate_from_E32=candidate,confirmed=accepted,train_n=len(train),
           train_ids=[p.name for p,_ in train],development_val_n=60,
           independent_val_n=len(independent),confirm_val_ids=[p.name for p,_ in independent],
-          train_seconds=train_seconds,training=fitdiag,refiner_training=refdiag,lightgbm_training=lightdiag,
+          selected_model_train_seconds=(candidate_fit_seconds if select=="bounded_small_hybrid" else train_seconds),
+          confirmation_experiment_fit_seconds=train_seconds+candidate_fit_seconds,
+          training=fitdiag,refiner_training=refdiag,lightgbm_training=lightdiag,
           candidate_domain_training=candidate_training,
           baseline_independent_val=basemetrics,candidate_independent_val=confirm,
           methodological_note="No TEST input has been read or used at this point; architecture chosen by TRAIN + complementary VAL.")
