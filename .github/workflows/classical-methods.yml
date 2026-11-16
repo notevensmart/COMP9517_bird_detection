@@ -1,0 +1,44 @@
+name: Classical LoG and Rotation-HOG Study
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/classical_methods_study.py'
+      - '.github/workflows/classical-methods.yml'
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install classical computer-vision dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Unit-test geometry features and FP accounting
+        run: python src/classical_methods_study.py --self-test
+      - name: Download open bird dataset
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import kagglehub
+          root=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          possibilities=[p.parent.parent for p in root.rglob('images/train') if (p.parent.parent/'labels/train').is_dir() and (p.parent.parent/'images/val').is_dir()]
+          if (root/'images/train').is_dir():possibilities.append(root)
+          possibilities=list(dict.fromkeys(possibilities))
+          assert len(possibilities)==1,possibilities
+          Path('dataset_root.txt').write_text(str(possibilities[0]))
+          PY
+      - name: Diagnose LoG proposals, Otsu masks and HOG rotation pooling
+        run: python src/classical_methods_study.py --dataset "$(cat dataset_root.txt)" --output classical_results --train-limit 35 --val-limit 12 --max-peaks 120
+      - name: Preserve all research results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: classical-log-otsu-rotation-hog
+          path: classical_results/
+          retention-days: 14
+          if-no-files-found: warn
