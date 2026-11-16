@@ -14,6 +14,7 @@ from cloud_audit import data, iou, nms
 from quality_subset_train import training_subset, gt_positive_features, sample_initial
 from rebuild_detector import build_bank
 from metrics_map import evaluate_map50, self_test as metric_tests
+from e31_visual_audit import audit as visual_audit, tests as visual_tests
 
 def models():
     return {
@@ -75,9 +76,11 @@ def run(dataset,output,train_n,val_n):
     y=np.r_[np.ones(len(pos),int),np.zeros(len(neg),int)]
     if not np.isfinite(X).all():raise ValueError("Nonfinite feature bank")
     results=[]
+    trained={}
     for name,model in models().items():
         print("E31 FIT",name,"features",X.shape,flush=True)
         t=time.perf_counter();model.fit(X,y);seconds=time.perf_counter()-t
+        trained[name]=model
         row=dict(method=name,train_seconds=seconds,patch_train_accuracy=float((model.predict(X)==y).mean()),
                  train_pos=len(pos),train_neg=len(neg),train_images=len(train),val_images=len(val),
                  val_birds=sum(len(gt) for _,gt in val),**evaluate(model,valbank))
@@ -102,10 +105,12 @@ def run(dataset,output,train_n,val_n):
     with (output/"e31_table.csv").open("w",newline="") as f:
         columns=["method","map50_coco101","top20_TP","top20_FP","train_seconds","mean_scoring_nms_s"]
         w=csv.DictWriter(f,fieldnames=columns);w.writeheader();w.writerows({k:r[k] for k in columns} for r in results)
+    visual_audit(trained,valbank,output)
     print("E31 COMPLETE",json.dumps(dict(best=best["method"],delta_pp=final["best_delta_vs_linear_svm_pp"])),flush=True)
 
 def tests():
     metric_tests()
+    visual_tests()
     p=[(np.array([[0,0,10,10],[20,20,30,30]],float),np.array([.9,.8]),np.array([[0,0,10,10]],float))]
     v=matched_top20(p)
     assert v["top20_TP"]==1 and v["top20_FP"]==1 and len(models())==4
