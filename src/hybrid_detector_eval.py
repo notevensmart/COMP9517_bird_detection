@@ -8,6 +8,7 @@ and annotated real validation images. No pretrained neural models.
 import argparse,csv,json,time
 from pathlib import Path
 import cv2,numpy as np
+from label_quality import unsafe_training_negative
 from cloud_audit import data,iou
 from multiscale_coverage import methods
 from rebuild_detector import (safe_labels,descriptor,make_train_features,fit,
@@ -34,6 +35,9 @@ def bank(samples,phase):
 def main(root,out,train_limit,val_limit):
     out.mkdir(parents=True,exist_ok=True)
     train=data(root,"train",train_limit);val=data(root,"val",val_limit)
+    flagged=[p.name for p,gt in train if unsafe_training_negative(p.name,len(gt))]
+    train=[(p,gt) for p,gt in train if not unsafe_training_negative(p.name,len(gt))]
+    print("TRAIN QA QUARANTINED",flagged,flush=True)
     trainbank=bank(train,"train")
     valbank=bank(val,"val")
     pos_gt,pos_proposal,initial,trainbank,feature_counts=make_train_features(trainbank,out)
