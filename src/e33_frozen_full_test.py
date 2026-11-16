@@ -20,6 +20,7 @@ def score_one(rec,base,rbf,variant,regressor=None):
     b=rec["boxes"]
     if not len(b):return np.empty((0,4),np.float32),np.empty(0,float)
     stage1=base.decision_function(rec["X"])
+    rec["margin"]=stage1  # RBF input contract; computed without GT
     score=.5*stage1+.5*rbf_logits(rbf,rec)
     if variant.startswith("refine"):
         if regressor is None:raise ValueError("Refiner required for frozen variant "+variant)
