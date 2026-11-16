@@ -1,4 +1,4 @@
-name: E33 Preflight - Frozen Test Protocol (no dataset accessed)
+name: E33 Frozen Classical Detector - Independent VAL then Full TEST
 on:
   push:
     branches: [main]
@@ -7,22 +7,50 @@ on:
       - '.github/workflows/e33-final-evaluation.yml'
   workflow_dispatch:
 jobs:
-  preflight:
+  frozen-evaluation:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: pip
-      - name: Install baseline strictly classical stack
+      - name: Install classical detector, OpenCV contrib and COCO metrics
         run: |
           python -m pip install -r requirements.txt
           python -m pip install 'opencv-contrib-python-headless>=4.9,<5' 'pycocotools>=2.0.8,<3' 'lightgbm>=4.0,<5'
-      - name: Verify frozen-method selection and COCO without opening dataset
+      - name: Data and model inference contract checks (no TEST accessed)
         run: |
           python src/e33_frozen_full_test.py --self-test
           python src/e32_failure_driven.py --self-test
-          python src/e34_stage2_lgbm.py --self-test
+          python src/e35_bounded_small_hybrid.py --self-test
           python src/metrics_map.py
+      - name: Download original Kaggle Beach Bird dataset
+        run: |
+          python - <<'PY'
+          import kagglehub
+          from pathlib import Path
+          source=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          matches=[p.parent.parent for p in source.rglob('images/train') if p.is_dir() and (p.parent.parent/'labels/train').is_dir() and (p.parent.parent/'images/val').is_dir()]
+          if (source/'images/train').is_dir():matches.append(source)
+          matches=list(dict.fromkeys(matches))
+          assert len(matches)==1,matches
+          Path('dataset_root.txt').write_text(str(matches[0]))
+          PY
+      - name: Confirm bounded hybrid versus pure SS on complementary VAL, freeze model BEFORE full TEST
+        run: |
+          python -u src/e33_frozen_full_test.py \
+            --dataset "$(cat dataset_root.txt)" \
+            --output e33_full_results \
+            --train-n 200 \
+            --confirm-n 0 \
+            --candidate bounded_small_hybrid
+      - name: Archive freeze record, full 240-image TEST metrics, per-image error table and real overlays
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e33-frozen-full-test-evidence
+          path: e33_full_results/
+          retention-days: 14
+          if-no-files-found: warn
