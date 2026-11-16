@@ -88,7 +88,7 @@ def eval_split(samples,base,rbf,variant,regressor,out,split,lightgbm=None):
     return ret,rows
 
 def pass_confirmation(baseline,candidate):
-    return (candidate["map50_coco101"]>=baseline["map50_coco101"]
+    return (candidate["map50_coco101"]>=baseline["map50_coco101"]+.01
         and candidate["top20_TP"]>=baseline["top20_TP"]
         and candidate["scale_recall_top100"]["small"]>=baseline["scale_recall_top100"]["small"]-.03
         and candidate["crowded_recall_top100"]>=baseline["crowded_recall_top100"]-.03)
@@ -178,8 +178,9 @@ def run(dataset,out,train_n,candidate,confirm_n):
 def tests():
     b={"map50_coco101":.1,"top20_TP":20,"scale_recall_top100":{"small":.5},
        "crowded_recall_top100":.5}
-    assert pass_confirmation(b,b)
-    b2=dict(b,map50_coco101=.09)
+    b_good=dict(b,map50_coco101=.115)
+    assert pass_confirmation(b,b_good)
+    b2=dict(b,map50_coco101=.105)
     assert not pass_confirmation(b,b2)
     class Identity:
         def transform(self,x):return x
