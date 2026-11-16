@@ -13,8 +13,23 @@ from nonlinear_appearance_study import collect_proposal_examples,rbf_logits
 from metrics_map import evaluate_map50
 from e32_failure_driven import per_image_stats,draw_audit,fit_refiner,apply_refiner,regression_features
 from rebuild_detector import cropbox
-from e39_scale_aware_boosting import letterbox
 # The branch imports E39's image preprocessing only; it does NOT use LightGBM.
+def letterbox(patch,size=64):
+    """TRAIN visual QA only: preserve source aspect and use median-colour padding."""
+    if patch is None or patch.ndim!=3 or patch.size==0:raise ValueError("Invalid crop")
+    h,w=patch.shape[:2]
+    scale=min(size/w,size/h)
+    nw=max(1,min(size,int(round(w*scale))))
+    nh=max(1,min(size,int(round(h*scale))))
+    small=cv2.resize(patch,(nw,nh),interpolation=cv2.INTER_AREA if scale<1 else cv2.INTER_LINEAR)
+    fill=np.median(patch.reshape(-1,3),axis=0).astype(np.uint8)
+    canvas=np.broadcast_to(fill,(size,size,3)).copy()
+    mask=np.zeros((size,size),np.uint8)
+    left=(size-nw)//2;top=(size-nh)//2
+    canvas[top:top+nh,left:left+nw]=small
+    mask[top:top+nh,left:left+nw]=1
+    return canvas,mask,(h,w)
+
 SEED=41
 FOCUS={"beach_bird_1379.jpg","beach_bird_1389.jpg","beach_bird_1399.jpg",
        "beach_bird_1419.jpg","beach_bird_1435.jpg","beach_bird_1452.jpg",
@@ -157,8 +172,9 @@ def preprocessing_audit(train,out):
 def tests():
     b=np.array([[0,0,10,10],[0,0,40,40],[0,0,150,100]],np.float32)
     assert scale_ids(b).tolist()==[0,1,2]
-    from e39_scale_aware_boosting import tests as preprocessing_tests
-    preprocessing_tests()
+    img=np.ones((12,48,3),np.uint8)*90
+    lb,mask,shape=letterbox(img)
+    assert shape==(12,48) and lb.shape==(64,64,3) and mask.sum()==1024
     assert np.isfinite(logit(np.array([0,1,.5]))).all()
     print("E41 self-test PASS",flush=True)
 
