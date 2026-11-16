@@ -226,7 +226,7 @@ def save_visuals(artifacts,bank,selected_variant,report):
     ranked=sorted(results,key=lambda r:-r["FP_total"])
     for row in ranked[:2]:selected.append(row["image"])
     for row in sorted(results,key=lambda r:-r["gt"])[:2]:selected.append(row["image"])
-    for row in sorted(results,key=lambda r:r["GT"])[:2]:selected.append(row["image"])
+    for row in sorted(results,key=lambda r:r["gt"])[:2]:selected.append(row["image"])
     for row in sorted(results,key=lambda r:-r["TP"])[:2]:selected.append(row["image"])
     selected=list(dict.fromkeys(selected))
     # Ensure six distinct views even if priority rankings overlap.
