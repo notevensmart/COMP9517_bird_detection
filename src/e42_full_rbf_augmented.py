@@ -2,7 +2,7 @@
 Streaming Selective Search banks prevent retaining ~1.3M 1924D proposals.
 Classical HOG/LBP PCA64 RBF, no neural models. VAL only, no TEST.
 """
-import argparse,csv,json,time,gc,joblib
+import argparse,csv,json,time,gc,joblib,os,hashlib
 from pathlib import Path
 import cv2,numpy as np
 from sklearn.svm import SVC
@@ -35,7 +35,21 @@ def map_box(b,w,mode):
 def prep(path,gt,stage1=None,need_features=True):
     im=cv2.imread(str(path))
     if im is None:raise ValueError("Unreadable "+str(path))
-    b=proposed(im,"selective")
+    # Persistent GT-blind proposal cache, keyed by image bytes and proposal implementation.
+    cache_root=os.environ.get("BIRD_PROPOSAL_CACHE")
+    cache_path=None
+    if cache_root:
+        cache_dir=Path(cache_root);cache_dir.mkdir(parents=True,exist_ok=True)
+        digest=hashlib.sha256(path.read_bytes()).hexdigest()[:24]
+        cache_path=cache_dir/(digest+"_ss_e37_v1.npy")
+    if cache_path is not None and cache_path.exists():
+        b=np.load(cache_path,allow_pickle=False)
+    else:
+        b=proposed(im,"selective")
+        if cache_path is not None:
+            tmp=cache_path.with_name(cache_path.name+".tmp")
+            with tmp.open("wb") as handle:np.save(handle,b,allow_pickle=False)
+            os.replace(tmp,cache_path)
     p,n=safe_labels(b,gt)
     if need_features:
         X=np.stack([descriptor(im,x) for x in b]) if len(b) else np.empty((0,1924),np.float32)
@@ -208,13 +222,21 @@ def tests():
     assert result.shape==(2,) and np.isfinite(result).all()
     print("Inference feature contract + real RBF scoring PASS",flush=True)
 
-def run(root,out,train_n=0,val_n=0):
+def run(root,out,train_n=0,val_n=0,resume=None):
     out.mkdir(parents=True,exist_ok=True)
     train=[v for v in data(root,"train",0) if len(v[1])]
     val=data(root,"val",0)
     if train_n:train=train[:train_n]
     if val_n:val=val[:val_n]
     print("E42 FULL TRAIN",len(train),"VAL",len(val),flush=True)
+    if resume:
+        state=joblib.load(resume)
+        stage1=state["stage1"]
+        model0=state["global_model"];model_aug=state["augmented_model"]
+        print("E42 RESUME: skipping training, evaluating saved models",flush=True)
+        results,proposals=eval_val(val,stage1,model0,model_aug,out)
+        (out/"resumed_evaluation.json").write_text(json.dumps(dict(status="COMPLETE",source_checkpoint=str(resume),results=results,proposals=proposals),indent=2))
+        return
     stage1,stage1diag=first_pass(train,out)
     core,aug,counts=samples(train,stage1,out)
     model0,diag0=fit_rbf(*core,pca_dim=64)
@@ -260,7 +282,8 @@ if __name__=="__main__":
     ap.add_argument("--self-test",action="store_true")
     ap.add_argument("--train-n",type=int,default=0)
     ap.add_argument("--val-n",type=int,default=0)
+    ap.add_argument("--resume",type=Path,default=None,help="Evaluate a saved checkpoint without retraining")
     a=ap.parse_args();tests()
     if not a.self_test:
         if a.dataset is None:ap.error("--dataset required")
-        run(a.dataset,a.output,a.train_n,a.val_n)
+        run(a.dataset,a.output,a.train_n,a.val_n,a.resume)
