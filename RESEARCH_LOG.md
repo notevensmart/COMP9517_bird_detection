@@ -292,3 +292,19 @@ The original annotations are preserved, especially the suspicious zero-GT VAL im
 E32's global-regression +1.8576pp gain **did not pass** the predeclared +2pp development gate. It may be independently **replicated as an explicitly exploratory follow-up**, not retrospectively marked a successful E32 gate. For any correction selected to enter E33, promotion to full TEST must meet a new **predeclared +1.0pp COCO mAP50** gain over the paired unmodified SS/RBF baseline on the 231-image complementary VAL subset, no loss in top20 TP, <=3pp small-object top100 recall reduction, and <=3pp crowded recall reduction. If not, freeze and test the baseline. This is VAL-only policy and is fixed **before any TEST images are accessed**.
 
 This prevents accidental promotion of a small subset-only win; qualitative regression on large swans is documented regardless of overall score. E33 image processing time excludes access to GT and diagnostic overlap calculations; GT is read only after image-only scores and final boxes are already determined.
+
+
+### E35 measured — bounded small-bird hybrid passed its paired development gate (16 Nov 2026)
+
+[Successful E35 run 43824937153](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43824937153); [original GT-and-prediction sheets, per-image CSV/JSON artifact 14208025083](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43824937153/artifacts/14208025083). On the same 100 annotated-positive TRAIN and 60 fixed VAL images, 376 GT birds, each proposal domain received a separately fitted stage1 SVM/stage2 TRAIN-only PCA64 RBF verification with identical settings, image identities and official COCO bbox mAP50 protocol.
+
+| Method | VAL mAP50 | top20 TP/1200 | top20 FP/1200 | small raw proposal R50 | overall raw proposal R50 | small postNMS coverage50 |
+|---|---:|---:|---:|---:|---:|---:|
+| Pure Selective Search | **13.4752%** | 173 | 1027 | 93/136 = **68.38%** | 85.37% | 53.68% |
+| SS + <=160 spatially balanced LoG boxes <1024px² | **15.9971%** | **186** | **1014** | 101/136 = **74.26%** | **87.77%** | **58.82%** |
+
+**Paired +2.522 percentage points mAP**, +13 top20 TPs, small-bird proposal R50 +5.88pp. Crowded top20 TPs rise 17→22. This **passes E35's predeclared development gate** and merits independent confirmation, not immediate TEST adoption. Mean proposal count increases 1001→1137 per image; remember full feature extraction and classifier cost when comparing runtime. Compared to E31 unrestricted union, bounded supplementation avoids doubling the proposal count. However E35's pure SS control **13.48% differs from E32/E34's 14.34% on nominally identical 100/60 settings**; these results must not be naively paired across runs. Hypothesis: nondeterministic proposal ordering or other run-to-run feature-bank variation; investigate if needed. The causal E35 claim is only the **within-E35 paired gain**.
+
+**Original image inspection:** hybrid top20 detects more distant shorebirds in `1452` (3→6 /26) and `1460` (4→8 /9); loses true top20 `1389` 13→8 /16 and one large swan `1399` 2→1. Seaweed `1379`, reeds `1419` and partial-bird boxes `1560` still generate red false alarms. Improving small-object proposals is not a fix for semantic background confusion. Record negative image-level outcomes, retain official VAL labels, no TEST used.
+
+**Final candidate selection BEFORE any TEST:** E35 bounded hybrid is the development winner, ahead of the E32 refiner's near-miss (+1.86pp but failed +2pp development gate) and the rejected E34 LightGBM. E33 must fit both pure SS and bounded hybrid on the **same predeclared 200 TRAIN images**, compare on the 231-image complementary VAL set, and promote the hybrid only if its independent mAP gain is >=1pp with top20/scale/crowding safeguards. Then freeze one method **before** the once-only full 240-image TEST. The 17.18% E31 score is not a full-dataset or final test result.
