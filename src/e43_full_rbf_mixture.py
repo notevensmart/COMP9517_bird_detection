@@ -89,7 +89,7 @@ def first_pass(train,out):
     return stage1,report
 def samples(train,stage1,out):
     rng=np.random.default_rng(77)
-    X=[];A=[];M=[];Y=[];areas=[];augX=[];augA=[];augM=[];augY=[]
+    X=[];A=[];M=[];Y=[];areas=[]
     previews=[];counts=dict(images=0,positive=0,negative=0,aug_positive=0,aug_negative=0)
     for k,(path,gt) in enumerate(train,1):
         rec,im=prep(path,gt,stage1)
@@ -107,28 +107,9 @@ def samples(train,stage1,out):
                 X.append(rec["X"][j]);A.append(secondary_features(im,box))
                 M.append(margin[j]);Y.append(y);areas.append(int(scale_ids([box])[0]))
                 counts["positive" if y else "negative"]+=1
-            # Max 6 patches per class/image/mode; avoid inflated correlated
-            # examples and preserve whole-image context for aux descriptors.
-            for mode in ("flip","photo"):
-                transformed=aug_image(im,mode)
-                for j in ids[:6]:
-                    box=map_box(b[j],im.shape[1],mode)
-                    f=descriptor(transformed,box)
-                    aux=secondary_features(transformed,box)
-                    # Stage1 sees augmented crop: no original-image score leakage.
-                    score=float(stage1.decision_function(f.reshape(1,-1))[0])
-                    augX.append(f);augA.append(aux);augM.append(score);augY.append(y)
-                    counts["aug_positive" if y else "aug_negative"]+=1
-                    if len(previews)<12:
-                        raw=cv2.resize(im[max(0,int(b[j][1])):max(1,int(b[j][3])),
-                                             max(0,int(b[j][0])):max(1,int(b[j][2]))],(96,96))
-                        changed=cv2.resize(transformed[max(0,int(box[1])):max(1,int(box[3])),
-                                                       max(0,int(box[0])):max(1,int(box[2]))],(96,96))
-                        previews.append(np.hstack((raw,changed)))
         counts["images"]+=1
         if k%50==0:print("E43 STAGE2 TRAIN",k,len(train),json.dumps(counts),flush=True)
     assert len(X)==len(A)==len(M)==len(Y)
-    assert len(augX)==len(augA)==len(augM)==len(augY)
     if previews:
         d=out/"preprocessing";d.mkdir(exist_ok=True)
         cv2.imwrite(str(d/"augmentation_preview.jpg"),np.vstack(previews))
