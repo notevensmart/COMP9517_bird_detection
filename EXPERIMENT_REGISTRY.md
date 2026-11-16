@@ -111,3 +111,15 @@ All FP counts above are **total final false-positive boxes across 12 VAL images 
 5. The error counts remain high and Otsu proposal recall is a bottleneck. **Do not report 11.73% as full validation-set or test mAP**, and never imply the method meets 50%.
 
 **Current decision:** retain A as the empirical small-subset winner; use more images / stable validation to test whether it generalises before spending time on bounded-cache sophistication. Classification and localisation are still limiting factors, and validation reuse means these exploratory choices need a frozen final test.
+
+## E15 — Classical detector learning curve: TRAIN size versus VAL mAP@0.5
+
+**Research question:** Was the previous 11.73% mAP@0.5 largely due to training on only 35 images, or does the classical proposal/classifier pipeline saturate?
+
+**Cloud execution:** [GitHub Actions 43793628053](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43793628053), implemented by `src/learning_curve.py` and `.github/workflows/learning-curve.yml`. **At registration, the workflow was running.** Numerical results should only be appended after inspecting actual output.
+
+**Protocol:** Strictly classical LoG+local Otsu proposals, HOG+4×4 uniform LBP features, balanced LinearSVC (C=0.01), global top-500 safe hard-negative mining per round for 3 rounds. Nested fixed-seed random TRAIN subsets of **35, 100, 300, 700, and entire available train split**; common **60 validation images** selected with seed 43. Both positive and safe-negative training descriptors are subsampled in a bounded, fixed fashion for CPU/RAM (max 24 matched positives, 55 safe negative candidates/image). This **changes train patch subsampling versus E14**, so the 35-image point will not necessarily equal previous 11.73%; comparisons within E15 are paired, E14-to-E15 are not.
+
+**Primary dependent variable:** single-class COCO 101-point bbox **mAP@IoU=0.5** (maxDets=100), computed from NMS-scored detections. At each training size, use the same predeclared 3 mining rounds, with all-round metrics separately retained. **Secondary:** false boxes at fixed SVM decision margin ≥0 (background, near-miss localisation, duplicates), missed birds, total returned boxes, training sizes and fit time. All validation images stay fixed; TEST remains untouched.
+
+**Artifacts to record:** `learning_curve_map50.png`, `learning_curve_errors.png`, `learning_curve.csv`, `learning_curve_all_rounds.csv`, `learning_curve_results.json` and `progress.json`. If runtime/memory fails, label partial results and the failure; do not extrapolate the graph.
