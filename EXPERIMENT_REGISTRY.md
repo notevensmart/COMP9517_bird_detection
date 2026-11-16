@@ -123,3 +123,22 @@ All FP counts above are **total final false-positive boxes across 12 VAL images 
 **Primary dependent variable:** single-class COCO 101-point bbox **mAP@IoU=0.5** (maxDets=100), computed from NMS-scored detections. At each training size, use the same predeclared 3 mining rounds, with all-round metrics separately retained. **Secondary:** false boxes at fixed SVM decision margin ≥0 (background, near-miss localisation, duplicates), missed birds, total returned boxes, training sizes and fit time. All validation images stay fixed; TEST remains untouched.
 
 **Artifacts to record:** `learning_curve_map50.png`, `learning_curve_errors.png`, `learning_curve.csv`, `learning_curve_all_rounds.csv`, `learning_curve_results.json` and `progress.json`. If runtime/memory fails, label partial results and the failure; do not extrapolate the graph.
+
+
+### E15 measured learning-curve results — completed
+
+**Run:** [GitHub Actions 43793628053](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43793628053), successful, with archived [PNG plots and raw CSV/JSON output](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43793628053/artifacts/14193349564). Dataset: 1,369 available TRAIN images and a *fixed* 60-image VAL subset containing 376 annotated birds. Nested TRAIN subsets sampled using seed 42, VAL seed 43, using the LoG + local Otsu candidates, HOG + spatial uniform LBP, balanced linear SVM (C=.01), three rounds of top-500 hard-negative mining. Bounded training-patch extraction (up to 24 positives and 55 safe negatives per image) makes this protocol **distinct from E14**. Every row is an actual COCO API 101-point **single-class bbox mAP@0.5, maxDets 100** measured on the same VAL images.
+
+| TRAIN images | VAL mAP@0.5 | False-positive boxes across 60 VAL images (margin≥0) | Missed birds (margin≥0) | Final boxes per VAL image (margin≥0) | Training positive patches | Training negative patches in round 3 |
+|---:|---:|---:|---:|---:|---:|---:|
+| 35 | 7.49% | 3,630 | 220 | 63.10 | 381 | 1,761 |
+| 100 | 6.54% | 2,970 | 224 | 52.03 | 1,007 | 3,356 |
+| 300 | 9.78% | 2,697 | 221 | 47.53 | 2,993 | 7,167 |
+| 700 | 11.25% | 2,997 | 203 | 52.83 | 6,747 | 14,704 |
+| **1,369 (full TRAIN)** | **11.29%** | **3,004** | **204** | **52.93** | **12,824** | **27,199** |
+
+**Interpretation:** The learning curve is *not monotone* at small N: 35→100 decreases from 7.49% to 6.54%. Adding images beyond 300 increases mAP, but **700→1369 improves only ~0.04 percentage points** (11.24995%→11.29259%). This is evidence of a plateau for the current fixed descriptor/proposal/SVM/mining setup on this 60-image validation sample, **not proof that all classical methods cannot improve**. False-positive counts remain in the thousands at the margin-0 threshold; a threshold adjustment may reduce FP but can increase FN and must be validated separately. At the largest size: 2,078 background FP, 920 localisation FP, 6 duplicate FP, and 204 FN birds. Proposal box geometry and background discrimination remain dominant challenges.
+
+**Figure citations in paper:** `learning_curve_map50.png` is the training-size vs official mAP50 curve; `learning_curve_errors.png` plots final false-positive boxes vs missed birds, both over the **same** VAL set. Exact underlying values are in `learning_curve.csv` and `learning_curve_all_rounds.csv` (every intermediate mining round). Neither held-out TEST GT nor other external pretrained models were used. This is exploratory VAL evaluation; freeze the final model and use the untouched TEST split for the final reported unbiased estimate.
+
+**Decision:** Do not invest in simply adding more training examples to this unchanged pipeline. Prioritise improving the IoU of classical candidates (local segmentation, box refinement) and reducing hard background mistakes with more discriminative handcrafted features. Document the saturation as a scientifically relevant limitation of this particular traditional detector.
