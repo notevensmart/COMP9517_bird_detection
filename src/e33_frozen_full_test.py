@@ -13,9 +13,10 @@ from selective_search_detection import prepare, fit_models, coverage
 from nonlinear_appearance_study import rbf_logits
 from e32_failure_driven import fit_refiner, regression_features, apply_refiner, per_image_stats, draw_audit
 from e34_stage2_lgbm import fit_lgb, lgb_logits
+from e35_bounded_small_hybrid import prepare_hybrid
 from metrics_map import evaluate_map50
 
-VARIANTS=("baseline_035","relaxed_060","refine_035","refine_060","lightgbm_stage2")
+VARIANTS=("baseline_035","relaxed_060","refine_035","refine_060","lightgbm_stage2","bounded_small_hybrid")
 
 def score_one(rec,base,rbf,variant,regressor=None,lightgbm=None):
     b=rec["boxes"]
@@ -40,7 +41,8 @@ def eval_split(samples,base,rbf,variant,regressor,out,split,lightgbm=None):
     for i,(path,gt) in enumerate(samples,1):
         tic=time.perf_counter()
         # GT only for post-hoc audit; proposals/feature model do not use labels.
-        rec=prepare([(path,gt)],"selective",split)[0]
+        rec=(prepare_hybrid([(path,gt)],split)[0] if variant=="bounded_small_hybrid"
+             else prepare([(path,gt)],"selective",split)[0])
         b,s=score_one(rec,base,rbf,variant,regressor,lightgbm)
         duration=time.perf_counter()-tic
         preds.append((b,s,gt))
@@ -99,19 +101,30 @@ def run(dataset,out,train_n,candidate,confirm_n):
     train_seconds=time.perf_counter()-tic
     basemetrics,_=eval_split(independent,base,rbf,"baseline_035",None,
                              out/"confirmation"/"baseline", "VAL")
+    candidate_training=None
     if candidate=="baseline_035":
         select="baseline_035";confirm=None;accepted=True
     else:
-        confirm,_=eval_split(independent,base,rbf,candidate,refiner,
+        trial_base=base;trial_rbf=rbf
+        if candidate=="bounded_small_hybrid":
+            # Different proposal domain: re-fit both stages on identical TRAIN
+            # identities, never reuse the SS-domain SVM/RBF on hybrid boxes.
+            alternate_bank=prepare_hybrid(train,"TRAIN")
+            trial_base,trial_rbf,candidate_training=fit_models(alternate_bank)
+            del alternate_bank;gc.collect()
+        confirm,_=eval_split(independent,trial_base,trial_rbf,candidate,refiner,
                             out/"confirmation"/"candidate","VAL",lightgbm=lightgbm)
         accepted=pass_confirmation(basemetrics,confirm)
         select=candidate if accepted else "baseline_035"
+        if accepted and candidate=="bounded_small_hybrid":
+            base,rbf=trial_base,trial_rbf
     # FREEZE: write and flush the decision BEFORE reading TEST records.
     selection=dict(status="FROZEN_BEFORE_TEST",choice=select,
           chosen_candidate_from_E32=candidate,confirmed=accepted,train_n=len(train),
           train_ids=[p.name for p,_ in train],development_val_n=60,
           independent_val_n=len(independent),confirm_val_ids=[p.name for p,_ in independent],
           train_seconds=train_seconds,training=fitdiag,refiner_training=refdiag,lightgbm_training=lightdiag,
+          candidate_domain_training=candidate_training,
           baseline_independent_val=basemetrics,candidate_independent_val=confirm,
           methodological_note="No TEST input has been read or used at this point; architecture chosen by TRAIN + complementary VAL.")
     (out/"model_freeze.json").write_text(json.dumps(selection,indent=2))
@@ -131,7 +144,8 @@ def run(dataset,out,train_n,candidate,confirm_n):
     picks={x[0].name:x for x in test if x[0].name in toshow}
     for name in toshow:
         path,gt=picks[name]
-        rec=prepare([(path,gt)],"selective","TEST VISUAL")[0]
+        rec=(prepare_hybrid([(path,gt)],"TEST VISUAL")[0] if select=="bounded_small_hybrid"
+             else prepare([(path,gt)],"selective","TEST VISUAL")[0])
         b,s=score_one(rec,base,rbf,select,refiner,lightgbm)
         draw_audit(rec,(b,s),select,visual)
     record=dict(status="COMPLETED_FULL_240_IMAGE_TEST",frozen_model=select,
