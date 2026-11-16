@@ -1,0 +1,49 @@
+name: E27 Verified Hard-Negative Scene Rejection
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/audited_negative_scene_study.py'
+      - '.github/workflows/e27-negative-scenes.yml'
+jobs:
+  experiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'pycocotools>=2.0.8,<3'
+      - name: Check data manifest and COCO geometry
+        run: |
+          python src/audited_negative_scene_study.py --self-test
+          python src/metrics_map.py
+      - name: Download source dataset
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import kagglehub
+          p=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          roots=[q.parent.parent for q in p.rglob('images/train') if (q.parent.parent/'labels/train').is_dir() and (q.parent.parent/'images/val').is_dir()]
+          if (p/'images/train').is_dir():roots.append(p)
+          roots=list(dict.fromkeys(roots))
+          assert len(roots)==1,roots
+          Path('dataset_root.txt').write_text(str(roots[0]))
+          PY
+      - name: Paired baseline vs curated negative-only scenes
+        run: |
+          python -u src/audited_negative_scene_study.py --dataset "$(cat dataset_root.txt)" --output e27_results --train-n 45 --val-n 30
+      - name: Archive scores and top-20 annotated VAL visualizations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e27-curated-background-rejection
+          path: e27_results/
+          retention-days: 14
+          if-no-files-found: warn
