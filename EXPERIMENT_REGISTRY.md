@@ -517,3 +517,16 @@ Raw proposal maximum IoU with GT improved mean **0.58797→0.59217**; IoU>=.5 co
 [GitHub Actions workflow](https://github.com/notevensmart/COMP9517_bird_detection/actions/workflows/e29-rbf-larger-sample.yml). Exact same E28 code and frozen hyperparameters (SVC(C=3,RBF gamma=scale, PCA64, stage1+stage2 fusion alpha=.5, NMS=.35, source IoU label thresholds); **100 annotated-positive TRAIN images and 60 VAL images** instead of E28's 45/30, seeded reproducibly through existing `quality_subset_train.training_subset` and `cloud_audit.data`. Larger experiment is *not fully independent* of E28 because 60-image VAL may overlap previous 30-image random sample; mark exploratory replication only. No test access.
 
 Frozen three-arm paired comparison stage1 linear SVM; E25 32D RF secondary; nonlinear HOG+LBP PCA64 RBF SVM secondary. Track official COCO 101pt bbox mAP50 maxDets100, top20 TP/FP and score>=0 FP/FN as supplemental; store original photograph overlays and output CSV. No hyperparameter retuning, pick a winner only if mAP and top20 TP improve; visually review surviving hard seaweed/reeds/drone FP. This checks whether the 8.60% small-sample figure was optimistic.
+
+
+### E29 completed: frozen larger subset confirmation of nonlinear HOG/LBP classifier
+
+[Successful run 43808415976](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43808415976), [raw artifact 14199836271](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43808415976/artifacts/14199836271). Frozen E28 hyperparameters, 100 annotated-positive TRAIN images and 60 fixed VAL images; TRAIN-only fitting and no TEST. This is exploratory replication with potentially overlapping earlier VAL scenes, not independent test confirmation. COCO 101-point single-class bird bbox mAP50 maxDets100, same proposals, NMS=.35, stage1 and candidate examples shared between models:
+
+| Variant | VAL mAP50 | correct top20 /1200 | incorrect top20 /1200 | FP @score0 | FN @score0 |
+|---|---:|---:|---:|---:|---:|
+| Stage1 linear HOG+LBP | 6.5775% | 111 | 1089 | 3864 | 217 |
+| Stage2 RF 32D | 7.3094% | 120 | 1080 | 1977 | 233 |
+| Stage2 PCA64 HOG+LBP nonlinear RBF SVM | **10.1270%** | **125** | **1075** | 1499 | 230 |
+
+RBF trained on 4165 labeled TRAIN proposal examples (1343 positives/2822 negatives); ~99.976% TRAIN patch accuracy, 2350 support vectors, first 64 PCA components explain 52.96% TRAIN standardized variance. This points to memorisation/limited invariance and severe background ranking failures; 125/1200 top-20 detections are true even with strongest tested verifier. The experiment supports improving the **fundamental candidate/shape/scale representation**, not further micro-optimizing these exact hyperparameters. A report of >=30% mAP from a non-ML baseline should be treated as a motivating **unverified external benchmark** unless dataset/split/IoU protocol are matched. Target >30% is a research objective, not an achieved result or lower theoretical bound.
