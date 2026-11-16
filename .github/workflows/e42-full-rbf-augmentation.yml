@@ -9,6 +9,7 @@ jobs:
       OPENBLAS_NUM_THREADS: '2'
       OMP_NUM_THREADS: '2'
       MKL_NUM_THREADS: '2'
+      BIRD_PROPOSAL_CACHE: .cache/bird-proposals
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -24,6 +25,13 @@ jobs:
           python src/e42_full_rbf_augmented.py --self-test
           python src/selective_search_detection.py --self-test
           python src/metrics_map.py
+      - name: Restore deterministic Selective Search proposal cache
+        uses: actions/cache@v4
+        with:
+          path: .cache/bird-proposals
+          key: bird-ss-e37-v1-${{ runner.os }}-e42-${{ github.run_id }}
+          restore-keys: |
+            bird-ss-e37-v1-${{ runner.os }}-e42-
       - name: Download public dataset without accessing TEST
         run: |
           python - <<'PY'
