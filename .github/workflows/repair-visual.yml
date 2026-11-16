@@ -1,0 +1,49 @@
+name: Classical Detector Repair and Visual QA
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/repair_and_visual_audit.py'
+      - '.github/workflows/repair-visual.yml'
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install classical dependencies and COCO
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'pycocotools>=2.0.8,<3'
+      - name: Test crop clipping, jitter labels, and official COCO mAP
+        run: |
+          python src/repair_and_visual_audit.py --self-test
+          python src/metrics_map.py
+      - name: Download bird dataset
+        run: |
+          python - <<'PY'
+          import kagglehub
+          from pathlib import Path
+          p=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          matches=[x.parent.parent for x in p.rglob('images/train') if (x.parent.parent/'labels/train').is_dir() and (x.parent.parent/'images/val').is_dir()]
+          if (p/'images/train').is_dir():matches.append(p)
+          matches=list(dict.fromkeys(matches))
+          assert len(matches)==1,matches
+          Path('dataset_root.txt').write_text(str(matches[0]))
+          PY
+      - name: Paired classical baseline and repaired method with visual overlays
+        run: |
+          python -u src/repair_and_visual_audit.py --dataset "$(cat dataset_root.txt)" --output repair_results --train-limit 100 --val-limit 30 --rounds 3
+      - name: Publish quantitative and visual audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: classical-repair-visuals
+          path: repair_results/
+          if-no-files-found: warn
+          retention-days: 14
