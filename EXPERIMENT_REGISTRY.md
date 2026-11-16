@@ -88,3 +88,26 @@ Research decision: Otsu region refinement improves proposal coverage and AP, but
 **Code:** `src/mining_ablation.py`; **cloud run:** [43792817123](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43792817123). Four variants under a shared LoG+Otsu proposal and HOG+4×4 uniform-LBP descriptor bank: (A) global top-scoring mining; (B) diversity-filtered hard negatives (per-image, area-bin and IoU controls); (C) B plus upweighting up to 120 lowest-margin training positives; (D) C plus bounded 1,400-negative cache (70% hard, 30% distributed reserve). Same 35 TRAIN /12 VAL image selection as E13; all receive three mining rounds. COCO 101-point bbox mAP50 with maxDets=100 is the PRIMARY metric, measured after **each** round. Additional diagnostics: unmatched final boxes (background, localisation, duplicate), missed birds, false detections on empty images, inference seconds and training sample mix. All training labels/weighting/mining use TRAIN only; any selection by VAL is exploratory and requires untouched TEST confirmation.
 
 **Status:** Cloud execution in progress when this entry was created. Do **not** invent or prefill numerical results. Update after the completed workflow and logs are inspected.
+
+
+### E14 measured results — matched classical mining study
+
+**Run:** [43792817123](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43792817123) (workflow success). Code: `src/mining_ablation.py`. SAME 35 TRAIN /12 VAL images (77 VAL birds), SAME LoG+local Otsu proposals and HOG+LBP feature bank, fixed seeds, same COCO 101-point bird mAP@IoU=0.50 maxDets=100. Neither VAL nor TEST annotations were used for training or hard-sample selection. All four configurations were evaluated at rounds 0,1,2,3; no cherry-picking from different splits.
+
+| Variant | Round 0 mAP | Round 1 | Round 2 | Round 3 (best) | Round-3 FP (margin≥0) | Round-3 missed birds |
+|---|---:|---:|---:|---:|---:|---:|
+| A Global top-500 mining | 7.59% | 3.74% | 8.82% | **11.73%** | **305** | 44 |
+| B Diverse negative mining | 7.59% | 4.56% | 9.92% | 10.83% | 316 | **43** |
+| C B + hard-positive reweighting | 7.59% | 4.26% | 9.97% | 11.64% | 333 | **43** |
+| D C + bounded 1400-negative cache | 7.59% | 4.26% | 9.04% | 9.82% | 345 | 45 |
+
+All FP counts above are **total final false-positive boxes across 12 VAL images at fixed SVM decision margin 0 after NMS**, and FN are missed GT birds at that threshold. Primary mAP uses globally score-ranked detections, not that fixed margin. The FP taxonomy / all intermediate rounds are in the run artifact `mining_ablation.json` and `mining_by_image.csv`.
+
+**Important interpretation:** 
+1. The *simpler global strategy with another training round* is the best validation mAP: from 8.82% after two mining rounds (E13) to **11.73% after three**, +2.91 percentage points. This is exploratory small-subset VAL and not final TEST performance.
+2. Diversity-control was plausible but did **not** improve the primary metric here. Hard-positive weights nearly recovered the global mAP (11.64% versus 11.73%) but did not exceed it; the bounded cache degraded it.
+3. Round 1 substantially reduced mAP compared with round 0 across variants, showing mining trajectories are nonmonotonic; record every round and never assume more mining always improves performance.
+4. Hard-positive weighting in this code is **training-only low-margin positive reweighting**, not newly generating ground-truth boxes at inference. Its benefits may depend on C, weight, and dataset size; further tuning would require controlled confirmation.
+5. The error counts remain high and Otsu proposal recall is a bottleneck. **Do not report 11.73% as full validation-set or test mAP**, and never imply the method meets 50%.
+
+**Current decision:** retain A as the empirical small-subset winner; use more images / stable validation to test whether it generalises before spending time on bounded-cache sophistication. Classification and localisation are still limiting factors, and validation reuse means these exploratory choices need a frozen final test.
