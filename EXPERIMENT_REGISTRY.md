@@ -398,3 +398,26 @@ The NMS.65 ablation improves over NMS.35 under matched conditions (e.g. round1 +
 **Paired ablation:** A stage1 only; B/C/D add the identical trained stage2 with score blending weight 0.25/0.50/0.75. All methods share the very same images, base SVM, candidate boxes, NMS .35, official COCO 101pt mAP50 maxDets 100; primary diagnostic false positive in top-20 ranked boxes/image and FN at fixed margin0 (note blended score changes interpretation of margin0). Save identical visually annotated top20 boxes for several backgrounds, crowded scenes and bird scenes, plus per-image errors. Validation GT is NEVER used for training.
 
 **Promotion gate:** only consider larger training if a variant gives **at least +2 percentage points absolute mAP50** over common baseline **and** fewer top-20 false positives, followed by independent inspection of the actual annotated images and repeat with another train seed. Otherwise reject it. No promise of >=50% mAP. **Status:** running, no results verified yet.
+
+
+### E24 measured results and visual adjudication — targeted FP reranking PASSES exploratory gate
+
+[Successful Actions run 43805068857](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43805068857), [raw artifact 14198260647](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43805068857/artifacts/14198260647), contains `e24_results.json`, `e24_per_image.csv` and identical per-image *top-20 detection* overlays for base/three cascade blends. Fixed 45 TRAIN annotated-positive images (zero TRAIN-empty images excluded), 12 VAL images (77 labelled birds), no TEST. Stage 1 = same E23 single HOG/LBP+SVM with one TRAIN-only HNM round (preselected from E23); stage 2 = TRAIN proposal-domain RandomForest (633 IoU>=.5 positive proposals; 706 post-NMS hard negatives and 512 other GT-safe negatives, 43 distinct TRAIN images), trained only from TRAIN labels, 32 handcrafted color/edge/geometry features + SVM margin. Outputs are officially scored single-class COCO 101-point bbox mAP50 maxDets100.
+
+| Model | mAP50 | Correct among top 240 (20 per VAL image) | Incorrect among top 240 | FP at score>=0 | Missed GT at score>=0 |
+|---|---:|---:|---:|---:|---:|
+| Stage1 baseline | 6.30% | 21 | 219 | 909 | 43 |
+| Cascade score blend alpha=.25 | 9.37% | 28 | 212 | 609 | 42 |
+| **Cascade alpha=.50** | **9.60%** | **29** | **211** | **471** | 44 |
+| Cascade alpha=.75 | 6.26% | 23 | 217 | 423 | 48 |
+
+**Acceptance:** alpha=.50 gains **+3.298 percentage points** mAP50 and reduces top20 FP by 8 on the exact same VAL images; clears numerical exploratory +2 points and lower top20 FP gate. Score>=0 threshold totals **cannot be interpreted as paired fixed-precision recall** because score blends change score scale; global COCO mAP and top20 matching are the primary comparable metrics. Alpha=.75 highlights trade-off: fewer FP at zero-score does not mean higher ranked mAP.
+
+**Actual visual inspection** of original `visual/A_base/top20_contact.jpg` versus `visual/C_cascade50/top20_contact.jpg`, plus per-image records:
+- `beach_bird_1379` (0 GT): top20 remains **20/20 red** on seaweed/debris. At score>=0 FP drops **88→34** but false alarms remain.
+- `beach_bird_1419` (5 GT): top20 remains **20/20 red** mainly on vegetation/reeds, with actual birds missed. FPs at zero-score decrease **82→4**, but 5 GT are still missed; threshold decrease alone is not a solved detector.
+- `beach_bird_1560` (7 GT): top20 stays 3 TP /17 FP; red nested/partial bird boxes persist. FP at score>=0 falls **102→59** but FN rises 2→3. The cascade may suppress some true bird patches.
+- `beach_bird_1606` (0 GT): 20/20 top-ranked false detections remain over the drone/aircraft-like shape; zero-score FP **106→56**.
+- `beach_bird_1389` top20 TP stays 5 on alpha=.50, but `beach_bird_1443` improves 4→6, `beach_bird_1516` improves 2→5 and `beach_bird_1559` improves 1→2. Gain originates from better ranking on some positive-bird scenes rather than eliminating hard all-negative top20 scenes.
+
+**Scientific interpretation:** This is the strongest *controlled* FP-related improvement to date but not a solution to dominant seaweed/vegetation/aircraft false detections, and **9.60% remains far from 50%**. Improvement on a 12-image validation set, and alpha tuned among three variants on this same VAL, can be selection noise. Require a second fixed split/seed and visual review before expanding; continue to investigate whether exact GT annotations omit visible birds. Do not report this small-set best score as full-dataset or unbiased test performance.
