@@ -151,7 +151,7 @@ def self_test():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
         p=Path(d)/"border.txt"
-        p.write_text("0 0.16494975 0.43620600 0.32990000 0.25000000\\n".replace("\\\\n","\\n"))
+        p.write_text("0 0.16494975 0.43620600 0.32990000 0.25000000" + chr(10))
         clipped=boxes(p,512,512)
         assert np.min(clipped)>=0 and len(clipped)==1
     print("Synthetic IoU, AP50, NMS and YOLO border-clipping checks PASS")
