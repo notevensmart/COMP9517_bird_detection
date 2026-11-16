@@ -267,3 +267,21 @@ Initial [run 43823281152](https://github.com/notevensmart/COMP9517_bird_detectio
 [Successful Actions run 43824245746](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43824245746), [original model images, per-image CSV and JSON artifact 14206281472](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43824245746/artifacts/14206281472). With exactly the same 100 TRAIN /60 VAL images (376 GT birds), same Selective Search proposals, same TRAIN-only PCA64 +32D auxiliary descriptors, stage1 SVM, candidate train examples, NMS=.35 and AP protocol, **incumbent RBF stage2 = 14.3370% COCO mAP50, 179 TP/1200 top20, 1021 FP/1200**. **LightGBM stage2 = 11.1367%, 156 TP/1200, 1044 FP/1200**: -3.2004pp mAP and 23 fewer high-ranked birds. Small-bird top100 recall RBF .5368, LGBM .5074. Crowded top100 recall RBF .4948, LGBM .5052 (this single secondary improvement does not offset overall loss). **Gate failed. Do not promote LightGBM.**
 
 Actual E34 4-model photo panels inspected: on crowded `1452`, RBF returns 4/26 top20 TP versus LightGBM 1/26; in `1389`, RBF returns 11/16 versus LightGBM 5/16; `1443` 7/12 vs 3/12; `1604` 8/47 vs 5/47. E34 also has an exception that prevents overgeneralizing: LGBM returns 2/2 among top20 on large swans in `1399` vs RBF 1/2; both produce many red partial/subobject rectangles, and neither solves other scene failures. This is **not** proof LightGBM is intrinsically poor, only that this fixed stage2 configuration on this data does not beat the RBF incumbent. The earlier standalone LoG-based E31-C LightGBM improvement must not be confused with this paired SS evaluation.
+
+
+### E32 measured corrections and photo review (16 Nov 2026)
+
+[Successful rerun 43824363415](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43824363415) after interface fix. [Actual source-photo overlays, 60-image per-image table and raw JSON artifact 14206422333](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43824363415/artifacts/14206422333). Same 100 annotated-positive TRAIN /60 fixed VAL /376 official birds, same Selective Search candidate bank and fitted stage1+2 RBF classical detector; no TEST.
+
+| Fixed postprocessing | COCO bbox mAP50 | TP/1200 top20 | Small top100 recall | Crowded top100 recall |
+|---|---:|---:|---:|---:|
+| Original NMS=.35 | 14.3370% | 179 | 53.68% | 49.48% |
+| Relaxed NMS=.60 | 14.4475% | 183 | 56.62% | 51.55% |
+| **TRAIN-only ExtraTrees 4D box reg + NMS=.35** | **16.1947%** | **192** | **59.56%** | **55.67%** |
+| Box reg + NMS=.60 | 14.7703% | 191 | 58.82% | 54.64% |
+
+**Decision:** Regression provides **+1.8576 percentage points** over baseline and 13 more top20 TPs, but misses *predeclared* +2pp promotion threshold by 0.1424pp: **E32 formal gate FAILED**. This does **not** make the improvement imaginary. Its consistent gains in small/crowd recall justify a **separate exploratory confirmation** on complementary VAL, with exact status labelled rather than retroactively changing the E32 criterion. If confirmation does not improve across disjoint VAL, reject; do not claim confirmed. Relaxed NMS alone has only +0.11pp AP benefit; no promotion.
+
+Actual photographed scenes viewed: small crowded shorebirds `1452` top20 improves **4→6** with box refinement and some blue boxes better aligned, but large boxes falsely cover surf/water. On close-up swans `1399`, refiner **regresses 1→0** top20 TPs and distorts some part/whole boxes; `1560` declines 5→4, `1509` 1→0, and `1434` 11→9. Thus a single global regression head has **uneven scene/scale effects** despite positive overall mAP; do not claim it solved large-bird localization. Seaweed and drones remain background confusers. The model still outputs >1000 FPs in top20 rankings across these 60 images. Later work should examine shape-aware, possibly size-conditioned regression; do not indiscriminately widen NMS or increase proposals.
+
+The original annotations are preserved, especially the suspicious zero-GT VAL image 1435. Training only included images with GT bird boxes due known label issues. No TEST used.
