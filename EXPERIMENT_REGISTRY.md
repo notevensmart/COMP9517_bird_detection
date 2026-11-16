@@ -339,3 +339,18 @@ The NMS.65 ablation improves over NMS.35 under matched conditions (e.g. round1 +
 **Ablation:** A single model HOG+LBP + train-only calibration; B 3 specialist size-gated HOG+LBP models; C size-gated HOG+LBP+HSV histograms+intensity mean/std+gradient/edge occupancy features. Measure COCO API bbox mAP@0.5, 101 recall samples maxDets=100 for each; report final FP/FN with probability>=.5, and visual image overlays for each arm showing correct boxes blue, false alarms red, matched GT green, missed GT yellow. Calibration is solely from reserved TRAIN and cannot see validation labels.
 
 **Status at registration:** cloud workflow queued; do not invent performance before run concludes. Consider subsequent classical box regression ONLY if this ablation demonstrates genuine classification gain. Existing E17 LoG/Otsu 11.76% (100 TRAIN/30 VAL) and E19 hybrid 6.18% are historical, not matched with E21 image-level calibration splitting.
+
+
+### E21 initial measured run — scale-specific split alone did NOT help (calibration re-audit)
+
+[Successful first Actions run 43800881909](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43800881909), [visual/CSV archive](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43800881909/artifacts/14196224342). Fixed dataset: 100 TRAIN images split 80 classifier fit / 20 calibration, 30 VAL images containing 156 GT birds; same hybrid GT-blind proposals, GT+jitter/proposal positives, 2 mining rounds and NMS IoU=.5. Primary metric: official COCO 101-point bbox mAP50.
+
+| Variant | Primary VAL mAP50 | FP at calibrated p>=.5 | Missed birds at p>=.5 |
+|---|---:|---:|---:|
+| A single HOG+LBP linear SVM | **8.15%** | 6,141 | 35 |
+| B three size-specific HOG+LBP SVMs | 6.54% | 7,316 | 33 |
+| C B plus HSV/intensity/edge features | 6.87% | 7,353 | 33 |
+
+**Do not claim improvement.** Novel architecture degrades mAP, though the simplistic calibrated 0.5 operating point is misleading because initial calibrators were fitted using *balanced GT-jitter positive samples* and only ~20 sampled negatives per calibration image instead of realistic candidate distributions; p>=.5 labels far too many backgrounds. In particular calibration of the small specialist used only 21 positive GT-jitter samples vs 407 negatives, indicating instability. An actual six-scene contact sheet shows hundreds of red large background rectangles over beach textures, shoreline and water.
+
+**Corrective follow-up:** [Actions 43801802502](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43801802502) now fits calibration using **held-out TRAIN real generated proposal positives and safe negatives** with natural class prevalence (no `class_weight='balanced'`), not ideal GT jitter, and reports ranked top-20 FP/FN for additional post-NMS diagnostics. Crucially both training and calibration use TRAIN only. Until rerun completes, retain E21 first result as a *negative outcome*; do not use its p>=.5 FP count to compare with older raw SVM margin=0 counts.
