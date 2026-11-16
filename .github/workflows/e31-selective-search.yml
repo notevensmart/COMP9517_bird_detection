@@ -1,0 +1,48 @@
+name: E31 Region-Aligned Selective Search Bird Detection
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/selective_search_detection.py'
+      - '.github/workflows/e31-selective-search.yml'
+jobs:
+  region_alignment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install COCO and OpenCV contrib
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'opencv-contrib-python-headless>=4.9,<5' 'pycocotools>=2.0.8,<3'
+      - name: Self-test region proposal geometry and COCO
+        run: |
+          python src/selective_search_detection.py --self-test
+          python src/metrics_map.py
+      - name: Download Beach Bird
+        run: |
+          python - <<'PY'
+          import kagglehub
+          from pathlib import Path
+          p=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          matches=[x.parent.parent for x in p.rglob('images/train') if (x.parent.parent/'labels/train').is_dir() and (x.parent.parent/'images/val').is_dir()]
+          if (p/'images/train').is_dir():matches.append(p)
+          matches=list(dict.fromkeys(matches))
+          assert len(matches)==1,matches
+          Path('dataset_root.txt').write_text(str(matches[0]))
+          PY
+      - name: Paired LoG versus Selective Search versus union, real images
+        run: python -u src/selective_search_detection.py --dataset "$(cat dataset_root.txt)" --output e31_results --train-n 45 --val-n 30 --method all
+      - name: Publish quantitative mAP, recall, per-image errors and visual examples
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e31-region-aligned-comparison
+          path: e31_results/
+          retention-days: 14
+          if-no-files-found: warn
