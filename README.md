@@ -45,3 +45,22 @@ The [E31 cloud workflow](https://github.com/notevensmart/COMP9517_bird_detection
 - Full evidence and research decision: [CLASSIFIER_COMPARISON_REPORT.md](CLASSIFIER_COMPARISON_REPORT.md).
 - Real model images, exact metrics and per-image CSV: [GitHub Actions artifact](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43820800202/artifacts/14204626929).
 - The separate E31-SS Selective Search + nonlinear RBF stage-2 detector achieved **17.18%** AP50 on a matched 45/30 study; this is **not** a like-for-like LightGBM-versus-SS comparison, but supports prioritizing proposal alignment rather than a mere classifier swap.
+
+
+## Failure-driven classical ML improvements and final evaluation (E32–E35)
+
+Three preregistered 100 TRAIN /60 VAL controlled studies followed the E30 EDA and visual-error audit. The original E31-SS score **17.18%** was only 45 TRAIN /30 VAL, not a final dataset score.
+
+| Study | Architecture comparison (same-study paired measurements) | Official COCO bbox AP50 | Decision |
+|---|---|---|---|
+| E32 | SS/RBF hard NMS.35 vs TRAIN-only ExtraTrees box regression + NMS.35 | 14.34% → 16.19% | Promising +1.86pp; narrowly fails preregistered +2pp promotion, visible large-swan regressions |
+| E34 | SS/RBF stage2 vs paired stage2 LightGBM | **14.34%** vs 11.14% | Reject LightGBM |
+| E35 | Pure SS/RBF vs **SS + capped spatial small-LoG candidate supplement** | 13.48% → **16.00%** | Passes +2pp development gate; still severe background FPs |
+
+The E35 pure SS baseline differs from E32/E34's nominally identical protocol; **compare within each run rather than attributing differences across runs to changes in method**. All experiments use handcrafted features and classical learners; TEST was untouched during method development.
+
+- [E32 objective results and real regression overlays](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43824363415)
+- [E34 rejected LightGBM results and hard-scene overlays](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43824245746)
+- [E35 bounded small-bird proposal results and original image comparisons](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43824937153)
+- [Model challenge and failure audit](MODEL_CHALLENGE_AUDIT.md)
+- **[E33 frozen confirmation and final full TEST run](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43828726227)**: fits both SS and bounded hybrid on 200 TRAIN, compares on the other 231 VAL, writes `model_freeze.json` and only then evaluates all 240 TEST. **Do not report test mAP until successful run artifacts are verified.**
