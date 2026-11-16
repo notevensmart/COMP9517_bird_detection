@@ -1,0 +1,47 @@
+name: E25 Freeze FP Rejection and Confirm on 30 VAL
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/e25-background-confirmation.yml'
+jobs:
+  confirm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install libraries
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'pycocotools>=2.0.8,<3'
+      - name: Run safety and metric unit tests
+        run: |
+          python src/background_rejector.py --self-test
+          python src/metrics_map.py
+      - name: Download dataset
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import kagglehub
+          root=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          c=[x.parent.parent for x in root.rglob('images/train') if (x.parent.parent/'labels/train').is_dir() and (x.parent.parent/'images/val').is_dir()]
+          if (root/'images/train').is_dir():c.append(root)
+          c=list(dict.fromkeys(c))
+          assert len(c)==1,c
+          Path('dataset_root.txt').write_text(str(c[0]))
+          PY
+      - name: Confirm fixed alpha without tuning on larger VAL subset
+        run: python -u src/background_rejector.py --dataset "$(cat dataset_root.txt)" --train-n 45 --val-n 30 --confirm --output e25_results
+      - name: Archive exact mAP and raw visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e25-fixed-blend-confirmation
+          path: e25_results/
+          if-no-files-found: warn
+          retention-days: 14
