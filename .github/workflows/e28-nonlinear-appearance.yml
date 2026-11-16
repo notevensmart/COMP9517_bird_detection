@@ -1,0 +1,49 @@
+name: E28 Nonlinear Classical Appearance Detector
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/nonlinear_appearance_study.py'
+      - '.github/workflows/e28-nonlinear-appearance.yml'
+jobs:
+  experiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'pycocotools>=2.0.8,<3'
+      - name: Test classical classifier and COCO metrics
+        run: |
+          python src/nonlinear_appearance_study.py --self-test
+          python src/metrics_map.py
+      - name: Download publicly available dataset
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import kagglehub
+          p=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          roots=[q.parent.parent for q in p.rglob('images/train') if (q.parent.parent/'labels/train').is_dir() and (q.parent.parent/'images/val').is_dir()]
+          if (p/'images/train').is_dir():roots.append(p)
+          roots=list(dict.fromkeys(roots))
+          assert len(roots)==1,roots
+          Path('dataset_root.txt').write_text(str(roots[0]))
+          PY
+      - name: Compare linear SVM, RF reranker and RBF classical silhouette verifier
+        run: |
+          python -u src/nonlinear_appearance_study.py --dataset "$(cat dataset_root.txt)" --output e28_results --train-n 45 --val-n 30
+      - name: Archive full mAP, FP and visual comparisons
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e28-nonlinear-appearance-validation
+          path: e28_results/
+          retention-days: 14
+          if-no-files-found: warn
