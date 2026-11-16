@@ -1,0 +1,53 @@
+name: E42 Full TRAIN RBF SVM with Augmentation Ablation
+on:
+  push:
+    branches: ['research/e42-full-rbf-augmentation']
+    paths: ['src/e42_full_rbf_augmented.py','.github/workflows/e42-full-rbf-augmentation.yml']
+  workflow_dispatch:
+jobs:
+  full-train-rbf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      OPENBLAS_NUM_THREADS: '2'
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install classical ML dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'opencv-contrib-python-headless>=4.9,<5' 'pycocotools>=2.0.8,<3'
+      - name: Test augmentation box transformations and metric
+        run: |
+          python src/e42_full_rbf_augmented.py --self-test
+          python src/selective_search_detection.py --self-test
+          python src/metrics_map.py
+      - name: Download public dataset without accessing TEST
+        run: |
+          python - <<'PY'
+          import kagglehub
+          from pathlib import Path
+          root=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          matches=[p.parent.parent for p in root.rglob('images/train') if p.is_dir()
+            and (p.parent.parent/'labels/train').is_dir() and (p.parent.parent/'images/val').is_dir()]
+          if (root/'images/train').is_dir():matches.append(root)
+          matches=list(dict.fromkeys(matches))
+          assert len(matches)==1,matches
+          Path('dataset_root.txt').write_text(str(matches[0]))
+          PY
+      - name: Full annotated-positive TRAIN and complete VAL; baseline vs augmented RBF
+        run: |
+          python -u src/e42_full_rbf_augmented.py --dataset "$(cat dataset_root.txt)" --output e42_results
+      - name: Publish metrics, real-image overlays and augmentation preview
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e42-full-train-rbf-augmentation-results
+          path: e42_results/
+          retention-days: 14
+          if-no-files-found: warn
