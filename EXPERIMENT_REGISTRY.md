@@ -354,3 +354,18 @@ The NMS.65 ablation improves over NMS.35 under matched conditions (e.g. round1 +
 **Do not claim improvement.** Novel architecture degrades mAP, though the simplistic calibrated 0.5 operating point is misleading because initial calibrators were fitted using *balanced GT-jitter positive samples* and only ~20 sampled negatives per calibration image instead of realistic candidate distributions; p>=.5 labels far too many backgrounds. In particular calibration of the small specialist used only 21 positive GT-jitter samples vs 407 negatives, indicating instability. An actual six-scene contact sheet shows hundreds of red large background rectangles over beach textures, shoreline and water.
 
 **Corrective follow-up:** [Actions 43801802502](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43801802502) now fits calibration using **held-out TRAIN real generated proposal positives and safe negatives** with natural class prevalence (no `class_weight='balanced'`), not ideal GT jitter, and reports ranked top-20 FP/FN for additional post-NMS diagnostics. Crucially both training and calibration use TRAIN only. Until rerun completes, retain E21 first result as a *negative outcome*; do not use its p>=.5 FP count to compare with older raw SVM margin=0 counts.
+
+
+## E23 — Quality-subset negative-learning gate (preregistered)
+
+**Source:** `src/quality_subset_train.py`, workflow `.github/workflows/e23-quality-subset.yml`, [Actions run 43804273592](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43804273592).
+
+**Motivation:** Inspection of train zero-GT contact sheet found visible birds in `beach_bird_0690.jpg` and `beach_bird_1343.jpg`, which could be wrongly treated as negative-only examples. E21 performance was very poor with large candidate/background confusion. Avoid blindly trusting empty labels.
+
+**Quality subset:** exactly 45 seeded TRAIN images, selected only from images with >=1 annotated bird. No zero-annotation TRAIN images are used in this small diagnostic; additionally known suspect zero-GT TRAIN images are quarantined in `src/label_quality.py`. This conservative selection is NOT proof that every remaining image is completely annotated. Fixed 12 VAL images, with no test usage. Same GT+jitter positives (IoU>=0.55), identical GT-blind LoG+Otsu candidate boxes, HOG+LBP descriptors and balanced linear SVM C=.01.
+
+**Paired comparison:** A baseline draws up to 20 GT-safe negatives per TRAIN image randomly; B selects **the same initial count** with deliberate coverage across image tiles and small/medium/large size bins. Both then receive two rounds of TRAIN-only post-NMS hard negative mining; B constrains mining to diverse image/tile/scale regions and removes near-duplicate selected boxes. Feature proposals and HOG+LBP descriptors are computed once per image, cached, and shared between variants/rounds.
+
+**Primary acceptance gate:** B must beat A in official COCO 101-point single-class bbox mAP@.5 (maxDets100) AND reduce the number of FP among the top 20 ranked detections/image on the identical VAL set, with independent manual visual review. Other reported metrics: FP and FN @margin0, training patch accuracy, all three rounds, per-image overlays (blue=TP, red=FP, yellow=missed GT), exact selected TRAIN filenames. Do not expand to full TRAIN unless this small result is actually promising, visually credible and repeatable. VAL GT is never used to train, select negative samples, or select candidates.
+
+**Status at registration:** waiting for completed GitHub Actions metrics; no outcome asserted.
