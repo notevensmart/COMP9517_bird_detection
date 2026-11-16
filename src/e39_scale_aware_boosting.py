@@ -145,7 +145,7 @@ def features_for_bank(bank,output,phase):
             if min(box[2]-box[0],box[3]-box[1])<8:
                 checks["extremely_small_native_crops"]+=1
         if feat:rec["boost_X"]=np.vstack(feat).astype(np.float32)
-        else:rec["boost_X"]=np.empty((0,180),np.float32)
+        else:rec["boost_X"]=np.empty((0,176),np.float32)
         if checks["feature_dimension"] is None and len(feat):
             checks["feature_dimension"]=rec["boost_X"].shape[1]
         if checks["feature_dimension"] is not None and rec["boost_X"].shape[1]!=checks["feature_dimension"]:
