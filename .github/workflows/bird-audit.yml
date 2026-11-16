@@ -4,7 +4,12 @@ on:
   push:
     branches: [main]
     paths:
-      - 'src/**'
+      - 'src/cloud_audit.py'
+      - 'src/anchor_proposals.py'
+      - 'src/tiny_overfit.py'
+      - 'src/tiny_anchor_train.py'
+      - 'src/hard_negative_mining.py'
+      - 'src/prune_proposals.py'
       - 'requirements.txt'
       - '.github/workflows/bird-audit.yml'
 jobs:
