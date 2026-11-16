@@ -1,8 +1,5 @@
 name: E42 Full TRAIN RBF SVM with Augmentation Ablation
 on:
-  push:
-    branches: ['research/e42-full-rbf-augmentation']
-    paths: ['src/e42_full_rbf_augmented.py','.github/workflows/e42-full-rbf-augmentation.yml']
   workflow_dispatch:
 jobs:
   full-train-rbf:
@@ -40,9 +37,20 @@ jobs:
           assert len(matches)==1,matches
           Path('dataset_root.txt').write_text(str(matches[0]))
           PY
+      - name: Smoke train 8 images and evaluate 2 real VAL images
+        run: |
+          python -u src/e42_full_rbf_augmented.py --dataset "$(cat dataset_root.txt)" --output smoke_results --train-n 8 --val-n 2
       - name: Full annotated-positive TRAIN and complete VAL; baseline vs augmented RBF
         run: |
           python -u src/e42_full_rbf_augmented.py --dataset "$(cat dataset_root.txt)" --output e42_results
+      - name: Publish smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-e42-diagnostics
+          path: smoke_results/
+          retention-days: 14
+          if-no-files-found: warn
       - name: Publish metrics, real-image overlays and augmentation preview
         if: always()
         uses: actions/upload-artifact@v4
