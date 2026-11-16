@@ -14,8 +14,8 @@ This is a **paper-ready ledger** of all meaningful experiments and failures. Eve
 | E08 | Does spatial-pruned HOG+SVM overfit? | Same 3 TRAIN images, 6 birds, SVM hard negatives | [Run](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43788148237) | Proposal 83.33% recall, tiny TRAIN AP50 best 37.10%; stricter margin 1.0 lowers boxes but also AP | Failed overfit gate |
 | E09 | Does LBP improve HOG classification? | Same 40 TRAIN /12 VAL images (77 VAL birds), spatial 1350, same hard-negative schedule | [Run](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43788975227) | HOG 3.73%, HOG+LBP 7.82% **exploratory validation** AP50 continuous | Improvement, but poor detection |
 | E10 | Can published EdgeBoxes reduce proposals? | 8 VAL images, 58 birds; OpenCV structured edge forest (non-neural trained component) | [Run](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43789080416) | 1000 boxes: 84.48% proposal recall@.5; 2000: 93.10%; **not detection AP** | Useful reference, provenance must be disclosed |
-| E11 | Can LoG blobs + local Otsu segmentation reduce incorrect boxes? | Identical reserved seeded VAL subset, GT used only for evaluation | Pending cloud run | Record proposal recall@.5/.75, unmatched (IoU<.1), poorly localised (.1≤IoU<.5), duplicates and false boxes per image | Await measurement |
-| E12 | Can rotation-pooled HOG/SVM reduce false detections? | Same TRAIN and VAL subsets as HOG baseline; identical pixel-derived candidate boxes | Pending cloud run | Record AP50 continuous, FP background/localisation/duplicates, missed birds, NMS and runtime | Await measurement |
+| E11 | Can LoG blobs + local Otsu segmentation improve detection? | Same 35 TRAIN /12 VAL images, 77 validation birds; GT-blind proposals | [Run](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43790916222) | LoG HOG AP50 2.65%; LoG+Otsu HOG **9.26%**; Otsu proposal recall@.5 74.03%, mean 959 boxes/image | Improved localisation but many FP |
+| E12 | Does rotation-pooled HOG/SVM improve classical detection? | Same 35 TRAIN /12 VAL subset, LoG and LoG+Otsu candidates | [Run](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43790916222) | LoG+Otsu HOG 9.26%, rotation pooling 7.40%; LoG HOG 2.65%, rotation 1.45%. **Not Fourier HOG** | Reject simplistic rotation pooling |
 
 ## Metric definitions and reporting protocol
 
@@ -46,3 +46,18 @@ This is a **paper-ready ledger** of all meaningful experiments and failures. Eve
 4. Why hard-negative mining reduces false detections but can sacrifice recall when thresholds are raised.
 5. Why different historical subset results are not paired statistical comparisons; use E09 and E11/E12 matched-split experiments for claims.
 6. Why crowded scenes and tiny birds require box-level diagnostics rather than only image-level classification accuracy.
+
+## E11/E12 false-box accounting — first classical methods run
+
+Run [43790916222](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43790916222) used 35 TRAIN /12 VAL (77 VAL birds). All values below describe final detections with **SVM decision margin >=0** after NMS, rather than candidate boxes or AP scoring's full ranked list.
+
+| Method | Validation continuous AP@.5 | Mean final boxes/image | Background FP | Localisation FP | Duplicate FP | Missed birds |
+|---|---:|---:|---:|---:|---:|---:|
+| LoG + HOG | 2.65% | 41.33 | 382 | 101 | 0 | 64 |
+| LoG + pooled rotation HOG | 1.45% | 42.42 | 394 | 104 | 0 | 66 |
+| LoG + Otsu + HOG | **9.26%** | 71.67 | 629 | 196 | 0 | 42 |
+| LoG + Otsu + pooled rotation HOG | 7.40% | 76.58 | 695 | 186 | 2 | 41 |
+
+Candidate-only results, before classification: LoG 720 boxes/image with recall50 44.16%, 7,559 background candidates and 965 near-misses; LoG+Otsu 959 boxes/image with recall50 74.03%, 9,582 background candidates and 1,663 near-misses (counts across all 12 images). **Do not call candidate-background counts detector FP.**
+
+Research decision: Otsu region refinement improves proposal coverage and AP, but produces many false positives. Simple 90-degree rotation-pooled HOG worsens AP on this test; it is not an implementation of published Fourier HOG. Next: hold the Otsu candidate set fixed, compare HOG vs HOG+LBP and hard-negative mining; report final FP types, misses, AP50, compute time. This is an exploratory matched-subset result and does not imply test performance.
