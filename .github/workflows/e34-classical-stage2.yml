@@ -1,0 +1,49 @@
+name: E34 Classical Stage2 LightGBM versus RBF
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/e34_stage2_lgbm.py'
+      - '.github/workflows/e34-classical-stage2.yml'
+  workflow_dispatch:
+jobs:
+  paired-stage2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install strictly classical detector stack
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'opencv-contrib-python-headless>=4.9,<5' 'pycocotools>=2.0.8,<3' 'lightgbm>=4.0,<5'
+      - name: Unit tests
+        run: |
+          python src/e34_stage2_lgbm.py --self-test
+          python src/metrics_map.py
+          python src/selective_search_detection.py --self-test
+      - name: Download original Kaggle data
+        run: |
+          python - <<'PY'
+          import kagglehub
+          from pathlib import Path
+          p=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          roots=[x.parent.parent for x in p.rglob('images/train') if (x.parent.parent/'labels/train').is_dir() and (x.parent.parent/'images/val').is_dir()]
+          if (p/'images/train').is_dir():roots.append(p)
+          roots=list(dict.fromkeys(roots))
+          assert len(roots)==1,roots
+          Path('dataset_root.txt').write_text(str(roots[0]))
+          PY
+      - name: Fixed 100 TRAIN 60 VAL paired nonlinear classical stage2 comparison
+        run: python -u src/e34_stage2_lgbm.py --dataset "$(cat dataset_root.txt)" --output e34_results --train-n 100 --val-n 60
+      - name: Keep photos, per-image and objective results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e34-classical-stage2-results
+          path: e34_results/
+          retention-days: 14
+          if-no-files-found: warn
