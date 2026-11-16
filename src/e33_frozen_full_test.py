@@ -165,6 +165,23 @@ def tests():
     assert pass_confirmation(b,b)
     b2=dict(b,map50_coco101=.09)
     assert not pass_confirmation(b,b2)
+    class Identity:
+        def transform(self,x):return x
+    class DummyP:
+        def predict_proba(self,x):
+            return np.tile(np.array([[.2,.8]]),(len(x),1))
+    class DummyBase:
+        def decision_function(self,x):return np.full(len(x),.1)
+    class DummyReg:
+        def predict(self,x):return np.zeros((len(x),4))
+    rec={"boxes":np.array([[0,0,10,10]],np.float32),
+         "X":np.ones((1,1),np.float32),"aux":np.zeros((1,32),np.float32)}
+    fake_rbf=(Identity(),Identity(),Identity(),DummyP())
+    for variant in ("baseline_035","relaxed_060","refine_035","refine_060","lightgbm_stage2","bounded_small_hybrid"):
+        bb,ss=score_one(rec,DummyBase(),fake_rbf,variant,DummyReg(),DummyP())
+        assert len(bb)==len(ss)==1 and np.isfinite(ss).all()
+        assert np.allclose(rec["margin"],.1)
+    print("E33 complete stage1-margin-to-stage2 inference contract PASS",flush=True)
     print("E33 independent confirmation gate tests PASS",flush=True)
 
 if __name__=="__main__":
