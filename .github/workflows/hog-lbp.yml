@@ -1,0 +1,44 @@
+name: HOG versus HOG+LBP
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/hog_lbp_comparison.py'
+      - '.github/workflows/hog-lbp.yml'
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Validate feature vector dimensions
+        run: python src/hog_lbp_comparison.py --self-test
+      - name: Download public Beach Bird dataset
+        run: |
+          python - <<'PY'
+          import kagglehub
+          from pathlib import Path
+          p=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          roots=[q.parent.parent for q in p.rglob('images/train') if (q.parent.parent/'labels/train').is_dir() and (q.parent.parent/'images/val').is_dir()]
+          if (p/'images/train').is_dir():roots.append(p)
+          roots=list(dict.fromkeys(roots))
+          assert len(roots)==1,roots
+          Path('dataset_root.txt').write_text(str(roots[0]))
+          PY
+      - name: Compare on identical train and validation subsets
+        run: python src/hog_lbp_comparison.py --dataset "$(cat dataset_root.txt)" --output comparison_results --train-limit 40 --val-limit 12 --per-shape 50
+      - name: Upload experiment artifacts even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hog-lbp-comparison
+          path: comparison_results/
+          retention-days: 14
+          if-no-files-found: warn
