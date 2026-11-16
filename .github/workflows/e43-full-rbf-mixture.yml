@@ -1,8 +1,5 @@
 name: E43 Full TRAIN RBF SVM Global vs Size-Expert Mixture
 on:
-  push:
-    branches: ['research/e43-full-rbf-mixture']
-    paths: ['src/e43_full_rbf_mixture.py','.github/workflows/e43-full-rbf-mixture.yml']
   workflow_dispatch:
 jobs:
   full-train-rbf:
@@ -40,9 +37,20 @@ jobs:
           assert len(matches)==1,matches
           Path('dataset_root.txt').write_text(str(matches[0]))
           PY
+      - name: Smoke train 8 images and evaluate 2 real VAL images
+        run: |
+          python -u src/e43_full_rbf_mixture.py --dataset "$(cat dataset_root.txt)" --output smoke_results --train-n 8 --val-n 2
       - name: Full annotated-positive TRAIN and complete VAL; global vs size-specialist RBF mixtures
         run: |
           python -u src/e43_full_rbf_mixture.py --dataset "$(cat dataset_root.txt)" --output e43_results
+      - name: Publish smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-e43-diagnostics
+          path: smoke_results/
+          retention-days: 14
+          if-no-files-found: warn
       - name: Publish metrics, real-image overlays and mixture diagnostics
         if: always()
         uses: actions/upload-artifact@v4
