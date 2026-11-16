@@ -17,6 +17,7 @@ import cv2,numpy as np
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import LinearSVC
+from label_quality import unsafe_training_negative
 from cloud_audit import data,iou,nms
 from classical_methods_study import blob_boxes,classification_errors
 from hog_lbp_comparison import features
@@ -240,6 +241,9 @@ def write_visuals(val,train_metrics,out,top_k=8):
 def main(root,out,train_limit,val_limit,rounds):
     out.mkdir(parents=True,exist_ok=True)
     tra=data(root,"train",train_limit);va=data(root,"val",val_limit)
+    flagged=[p.name for p,gt in tra if unsafe_training_negative(p.name,len(gt))]
+    tra=[(p,gt) for p,gt in tra if not unsafe_training_negative(p.name,len(gt))]
+    print("TRAIN QA QUARANTINED",flagged,flush=True)
     rng=np.random.default_rng(123)
     train_bank=prepare(tra,"train",rng)
     val_bank=prepare(va,"val",rng)
