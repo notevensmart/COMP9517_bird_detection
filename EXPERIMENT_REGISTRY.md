@@ -61,3 +61,22 @@ Run [43790916222](https://github.com/notevensmart/COMP9517_bird_detection/action
 Candidate-only results, before classification: LoG 720 boxes/image with recall50 44.16%, 7,559 background candidates and 965 near-misses; LoG+Otsu 959 boxes/image with recall50 74.03%, 9,582 background candidates and 1,663 near-misses (counts across all 12 images). **Do not call candidate-background counts detector FP.**
 
 Research decision: Otsu region refinement improves proposal coverage and AP, but produces many false positives. Simple 90-degree rotation-pooled HOG worsens AP on this test; it is not an implementation of published Fourier HOG. Next: hold the Otsu candidate set fixed, compare HOG vs HOG+LBP and hard-negative mining; report final FP types, misses, AP50, compute time. This is an exploratory matched-subset result and does not imply test performance.
+
+
+## E13 — Official mAP@0.5 validation and incorrect-box ablation (measured)
+
+**Source:** [GitHub Actions run 43792119328](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43792119328) with archived `otsu_hog_lbp_map50.json` and per-image CSV. **Reproducible code:** `src/otsu_hog_lbp_map.py`, `src/metrics_map.py`. All methods trained with the *same fixed seed 35 TRAIN images* and were evaluated on the *same 12 VAL images (77 annotated birds)*; no test samples used. Proposal stage: **LoG multi-scale peaks + local Otsu segmentation**. Mean ~959.08 proposals/image for all arms; identical proposals used for all three descriptors/classifiers. All metrics here use the *official COCO 101-point bbox mAP@IoU 0.50* (maxDets=100 per image), single bird class; COCO API synthetic tests passed.
+
+| Model | Primary VAL mAP@0.5 | Continuous AP@0.5 (secondary) | Output boxes / image (margin≥0) | Total FP (12 images) | Background FP | Localisation FP | Duplicate FP | FN birds |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| LoG+Otsu → HOG+SVM | 4.60% | 4.46% | 85.42 | 994 | 785 | 209 | 0 | 46 |
+| LoG+Otsu → HOG+LBP+SVM | 7.59% | 7.37% | 81.58 | 941 | 741 | 200 | 0 | 39 |
+| **LoG+Otsu → HOG+LBP+SVM + 2 mining rounds** | **8.82%** | **8.41%** | **37.83** | **425** | **296** | **128** | **1** | **48** |
+
+**Important:** FP/FN counts correspond to a **fixed decision margin of 0 after NMS**, while AP is computed from confidence-ranked detections with the COCO max-100 limit; don't treat these as identical operating points. There are also 163/161/59 false detections on blank images across the three arms. Average preliminary end-to-end inference time approximately 1.40 sec/image (Python/OpenCV/scikit-image CPU environment); observed training fit times 0.44/0.40/3.05 sec **excluding feature extraction time**. Feature extraction computed once per image and shared across comparison methods.
+
+**Interpretation:** LBP improves background/foreground separation at a given region candidate set. Hard-negative mining further suppresses background FP (741→296) but also increases FN (39→48); this is a precision–recall trade-off requiring thoughtful threshold selection. Despite improvement, **8.82% mAP@0.5 is below target** and the small validation subset is exploratory rather than a final test result. No claim of >50% mAP is made.
+
+**Methodology caveat:** Earlier E11's LoG+Otsu HOG *continuous* AP50 9.26% used a **different training sampler**; E13 HOG continuous AP50 4.46% is not a contradiction or matched comparison. Compare only the E13 rows against each other.
+
+**Next question:** Can better localisation, colour/shape features, or actual rotation-invariant Fourier-HOG improve mAP without reverting to thousands of candidates? Prioritise improving the fraction of birds whose generated boxes achieve IoU≥0.5, and reducing high-scoring near-miss predictions. Validate with official mAP and exact FP taxonomy again.
