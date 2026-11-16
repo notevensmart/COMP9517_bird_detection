@@ -12,16 +12,18 @@ from quality_subset_train import training_subset
 from selective_search_detection import prepare, fit_models, coverage
 from nonlinear_appearance_study import rbf_logits
 from e32_failure_driven import fit_refiner, regression_features, apply_refiner, per_image_stats, draw_audit
+from e34_stage2_lgbm import fit_lgb, lgb_logits
 from metrics_map import evaluate_map50
 
-VARIANTS=("baseline_035","relaxed_060","refine_035","refine_060")
+VARIANTS=("baseline_035","relaxed_060","refine_035","refine_060","lightgbm_stage2")
 
-def score_one(rec,base,rbf,variant,regressor=None):
+def score_one(rec,base,rbf,variant,regressor=None,lightgbm=None):
     b=rec["boxes"]
     if not len(b):return np.empty((0,4),np.float32),np.empty(0,float)
     stage1=base.decision_function(rec["X"])
     rec["margin"]=stage1  # RBF input contract; computed without GT
-    score=.5*stage1+.5*rbf_logits(rbf,rec)
+    score=.5*stage1+.5*(lgb_logits(lightgbm,rbf,rec) if variant=="lightgbm_stage2" else rbf_logits(rbf,rec))
+    if variant=="lightgbm_stage2" and lightgbm is None:raise ValueError("Missing frozen LightGBM stage2 model")
     if variant.startswith("refine"):
         if regressor is None:raise ValueError("Refiner required for frozen variant "+variant)
         b=apply_refiner(b,regression_features(rec,base,rbf),regressor)
@@ -29,7 +31,7 @@ def score_one(rec,base,rbf,variant,regressor=None):
     keep=nms(b,score,iou_limit=nms_iou,max_det=300)
     return b[keep],score[keep]
 
-def eval_split(samples,base,rbf,variant,regressor,out,split):
+def eval_split(samples,base,rbf,variant,regressor,out,split,lightgbm=None):
     out.mkdir(parents=True,exist_ok=True)
     preds=[];rows=[];begin=time.perf_counter()
     focus={"beach_bird_1379.jpg","beach_bird_1399.jpg","beach_bird_1419.jpg",
@@ -39,7 +41,7 @@ def eval_split(samples,base,rbf,variant,regressor,out,split):
         tic=time.perf_counter()
         # GT only for post-hoc audit; proposals/feature model do not use labels.
         rec=prepare([(path,gt)],"selective",split)[0]
-        b,s=score_one(rec,base,rbf,variant,regressor)
+        b,s=score_one(rec,base,rbf,variant,regressor,lightgbm)
         duration=time.perf_counter()-tic
         preds.append((b,s,gt))
         row=dict(image=path.name,method=variant,GT=len(gt),proposals=len(rec["boxes"]),
@@ -88,9 +90,11 @@ def run(dataset,out,train_n,candidate,confirm_n):
     tic=time.perf_counter()
     bank=prepare(train,"selective","TRAIN")
     base,rbf,fitdiag=fit_models(bank)
-    refiner=None;refdiag=None
+    refiner=None;refdiag=None;lightgbm=None;lightdiag=None
     if candidate.startswith("refine"):
         refiner,refdiag=fit_refiner(bank,base,rbf)
+    if candidate=="lightgbm_stage2":
+        lightgbm,lightdiag=fit_lgb(bank,rbf)
     del bank;gc.collect()
     train_seconds=time.perf_counter()-tic
     basemetrics,_=eval_split(independent,base,rbf,"baseline_035",None,
@@ -99,7 +103,7 @@ def run(dataset,out,train_n,candidate,confirm_n):
         select="baseline_035";confirm=None;accepted=True
     else:
         confirm,_=eval_split(independent,base,rbf,candidate,refiner,
-                            out/"confirmation"/"candidate","VAL")
+                            out/"confirmation"/"candidate","VAL",lightgbm=lightgbm)
         accepted=pass_confirmation(basemetrics,confirm)
         select=candidate if accepted else "baseline_035"
     # FREEZE: write and flush the decision BEFORE reading TEST records.
@@ -107,16 +111,16 @@ def run(dataset,out,train_n,candidate,confirm_n):
           chosen_candidate_from_E32=candidate,confirmed=accepted,train_n=len(train),
           train_ids=[p.name for p,_ in train],development_val_n=60,
           independent_val_n=len(independent),confirm_val_ids=[p.name for p,_ in independent],
-          train_seconds=train_seconds,training=fitdiag,refiner_training=refdiag,
+          train_seconds=train_seconds,training=fitdiag,refiner_training=refdiag,lightgbm_training=lightdiag,
           baseline_independent_val=basemetrics,candidate_independent_val=confirm,
           methodological_note="No TEST input has been read or used at this point; architecture chosen by TRAIN + complementary VAL.")
     (out/"model_freeze.json").write_text(json.dumps(selection,indent=2))
     print("E33 MODEL FROZEN BEFORE TEST",json.dumps({k:selection[k] for k in ("choice","confirmed","train_n","independent_val_n")}),flush=True)
-    if select=="baseline_035":refiner=None
+    if select=="baseline_035":refiner=None;lightgbm=None
     # All 240 original test images, label set kept untouched until now.
     test=data(dataset,"test",0)
     if len(test)!=240:raise RuntimeError(f"Expected 240 TEST images, found {len(test)}")
-    metrics,rows=eval_split(test,base,rbf,select,refiner,out/"test","TEST")
+    metrics,rows=eval_split(test,base,rbf,select,refiner,out/"test","TEST",lightgbm=lightgbm)
     # Save representative post-hoc test visuals without any further fitting or tuning.
     toshow=[]
     for rec in sorted(rows,key=lambda x:(-x["top20_FP"],x["image"]))[:3]:toshow.append(rec["image"])
@@ -128,7 +132,7 @@ def run(dataset,out,train_n,candidate,confirm_n):
     for name in toshow:
         path,gt=picks[name]
         rec=prepare([(path,gt)],"selective","TEST VISUAL")[0]
-        b,s=score_one(rec,base,rbf,select,refiner)
+        b,s=score_one(rec,base,rbf,select,refiner,lightgbm)
         draw_audit(rec,(b,s),select,visual)
     record=dict(status="COMPLETED_FULL_240_IMAGE_TEST",frozen_model=select,
        training_images=len(train),test_images=len(test),test_GT=metrics["GT"],
