@@ -421,3 +421,20 @@ The NMS.65 ablation improves over NMS.35 under matched conditions (e.g. round1 +
 - `beach_bird_1389` top20 TP stays 5 on alpha=.50, but `beach_bird_1443` improves 4→6, `beach_bird_1516` improves 2→5 and `beach_bird_1559` improves 1→2. Gain originates from better ranking on some positive-bird scenes rather than eliminating hard all-negative top20 scenes.
 
 **Scientific interpretation:** This is the strongest *controlled* FP-related improvement to date but not a solution to dominant seaweed/vegetation/aircraft false detections, and **9.60% remains far from 50%**. Improvement on a 12-image validation set, and alpha tuned among three variants on this same VAL, can be selection noise. Require a second fixed split/seed and visual review before expanding; continue to investigate whether exact GT annotations omit visible birds. Do not report this small-set best score as full-dataset or unbiased test performance.
+
+
+### E25 — Pre-frozen cascade confirmation on 30 validation images: reproduced improvement
+
+[Successful cloud run 43805517540](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43805517540), [raw images/JSON/CSV artifact 14197594526](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43805517540/artifacts/14197594526). **No tuning in E25:** stage2 and stage1 identical algorithms/seed as E24, same 45 quality TRAIN images with TRAIN-only negative provenance, and *fixed alpha=.50 chosen in E24*. Expanded VAL from 12 to 30 images, total 156 annotated birds, same `data(root,"val",30)` reproducible seed43. Not fully independent image set from 12-image experiment (may overlap), but no re-tuning and most images differ. No TEST accessed.
+
+| Metric | Single HOG+LBP SVM | Fixed alpha=.50 Stage2 RF cascade | Difference |
+|---|---:|---:|---:|
+| COCO bbox mAP@.5 101pt maxDets100 | **3.375%** | **6.499%** | **+3.124 percentage points** |
+| Correct among top 600 detections (20/image) | 38 | **56** | **+18 TP** |
+| Incorrect among top 600 | 562 | **544** | **−18 FP** |
+| False detections at zero score (NOT fixed operating point across models) | 2,069 | 1,056 | −1,013 |
+| Missed GT at zero score (NOT fixed operating point across models) | 95 | 94 | −1 |
+
+**Image-level checks:** Across 30 images, correct top20 TP ranking increased in **13 images**, stayed unchanged in **16**, and worsened in **one**. Score>=0 FP totals decreased in all 30 images, but score scales differ across systems. Actual visual JPEG `visual/C_cascade50/top20_contact.jpg` independently inspected: 1379 (GT0) still top20 all false alarms on seaweed; 1419 birds under reeds still mostly missed; 1560 several genuine bird detections but many red nested partials; 1606 (GT0) still top20 all red on drone-like structure. Thus improvement in global mAP and some bird-scene ranking is reproducible, **but the worst semantic-background false alarms persist**.
+
+**Engineering decision:** The TRAIN-only proposal-domain secondary classifier is worth retaining as a promising *research branch*, not replacing the existing detector as a solved model. More training images may help, but no evidence yet that this architecture can approach 50% mAP. Next focused test should directly curate *hardest false-positive categories*, require per-background image FP reduction without losing recall, and add a small independent set of audited negative-only TRAIN images; do not expand blindly and do not use VAL labels in training. Recognise official VAL missing-annotation uncertainty.
