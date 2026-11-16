@@ -33,11 +33,18 @@ def selective_boxes(image,limit=1200):
     wh=boxes[:,2:]-boxes[:,:2]
     mask=(wh[:,0]>=3)&(wh[:,1]>=3)&(wh[:,0]*wh[:,1]>=16)&(wh[:,0]*wh[:,1]<=.92*w*h)
     boxes=boxes[mask]
-    # Unique boxes, keep Selective Search's own ordering; do NOT use GT to rank.
+    # E37 determinism repair: raw Selective Search boxes have a stable SET but
+    # arbitrary ordering across calls (verified in E36). Never truncate that
+    # arbitrary prefix: canonicalize coordinates first, then apply a fixed-seed
+    # GT-blind sample when the raw candidate count exceeds the budget.
+    # IMPORTANT: This changes the proposal distribution; it is a NEW
+    # architecture version requiring TRAIN/VAL evaluation before any TEST use.
     if len(boxes):
-        _,indices=np.unique(boxes,axis=0,return_index=True)
-        boxes=boxes[np.sort(indices)]
-    return boxes[:limit].astype(np.float32)
+        boxes=np.unique(boxes,axis=0).astype(np.float32)
+        if len(boxes)>limit:
+            selected=np.random.default_rng(9517).choice(len(boxes),size=limit,replace=False)
+            boxes=boxes[np.sort(selected)]
+    return boxes.astype(np.float32)
 
 def proposed(image,which):
     log,_=blob_boxes(image,"otsu",max_peaks=120)
