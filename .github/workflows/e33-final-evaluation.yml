@@ -1,0 +1,28 @@
+name: E33 Preflight - Frozen Test Protocol (no dataset accessed)
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/e33_frozen_full_test.py'
+      - '.github/workflows/e33-final-evaluation.yml'
+  workflow_dispatch:
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install baseline strictly classical stack
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'opencv-contrib-python-headless>=4.9,<5' 'pycocotools>=2.0.8,<3' 'lightgbm>=4.0,<5'
+      - name: Verify frozen-method selection and COCO without opening dataset
+        run: |
+          python src/e33_frozen_full_test.py --self-test
+          python src/e32_failure_driven.py --self-test
+          python src/e34_stage2_lgbm.py --self-test
+          python src/metrics_map.py
