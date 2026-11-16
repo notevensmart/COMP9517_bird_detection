@@ -1,0 +1,46 @@
+name: E36 Classical Detector Repeatability Checks
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/e36_reproducibility.py'
+      - '.github/workflows/e36-reproducibility.yml'
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install classical dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'opencv-contrib-python-headless>=4.9,<5' 'pycocotools>=2.0.8,<3'
+      - name: Self-test candidate and model hash utility
+        run: python src/e36_reproducibility.py --self-test
+      - name: Download Beach Bird without touching test split
+        run: |
+          python - <<'PY'
+          import kagglehub
+          from pathlib import Path
+          p=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          roots=[x.parent.parent for x in p.rglob('images/train') if (x.parent.parent/'labels/train').is_dir() and (x.parent.parent/'images/val').is_dir()]
+          if (p/'images/train').is_dir():roots.append(p)
+          roots=list(dict.fromkeys(roots))
+          assert len(roots)==1,roots
+          Path('dataset_root.txt').write_text(str(roots[0]))
+          PY
+      - name: Repeat proposal extraction and same-bank model fitting
+        run: python -u src/e36_reproducibility.py --dataset "$(cat dataset_root.txt)" --output e36_results
+      - name: Archive reproducibility results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e36-classical-reproducibility
+          path: e36_results/
+          retention-days: 14
+          if-no-files-found: warn
