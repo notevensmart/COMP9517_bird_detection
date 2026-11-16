@@ -276,8 +276,18 @@ def lightgbm_model(seed):
 def fit_boosters(train,stage1,augmentation=None,seed=SEED):
     X,y,areas,counts=collect_training(train,stage1)
     if augmentation is not None:
-        ax,ay,aa,_=augmentation
-        if X.shape[1]!=ax.shape[1]:raise ValueError('Augmentation feature dimensions do not match')
+        if len(augmentation)!=3:
+            raise ValueError("Expected exactly three augmented arrays (features, labels, areas)")
+        ax,ay,aa=augmentation
+        ax=np.asarray(ax,dtype=np.float32)
+        ay=np.asarray(ay,dtype=int)
+        aa=np.asarray(aa,dtype=np.float32)
+        if ax.ndim!=2 or X.shape[1]!=ax.shape[1]:
+            raise ValueError("Augmentation feature dimensions do not match")
+        if len(ax)!=len(ay) or len(ax)!=len(aa):
+            raise ValueError("Augmentation features, labels and areas have different row counts")
+        if not np.isfinite(ax).all() or not np.isfinite(aa).all():
+            raise ValueError("Nonfinite augmented features or areas")
         X=np.vstack((X,ax));y=np.r_[y,ay];areas=np.r_[areas,aa]
     models={}
     t=time.perf_counter()
@@ -388,6 +398,13 @@ def tests():
     assert np.array_equal(pb,source_boxes) and bright.shape==im.shape
     assert np.mean(np.abs(bright.astype(float)-im.astype(float)))>0.1
     assert len(normalized_features(flipped,fb[0]))==len(f)
+    # Regression test for E39 run 43852165545: fit_boosters must receive
+    # exactly the three arrays the augmentor supplies, not unpack four.
+    import inspect
+    code=inspect.getsource(fit_boosters)
+    assert 'ax,ay,aa=augmentation' in code
+    assert 'len(augmentation)!=3' in code
+    assert len((np.zeros((2,len(f)),np.float32),np.array([0,1]),np.array([20.,1200.])))==3
     try:
         normalized_features(im,[20,20,20,30])
         raise AssertionError("Invalid crop incorrectly accepted")
