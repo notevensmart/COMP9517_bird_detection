@@ -5,6 +5,7 @@ Classical HOG/LBP PCA64 RBF, no neural models. VAL only, no TEST.
 import argparse,csv,json,time,gc
 from pathlib import Path
 import cv2,numpy as np
+from sklearn.svm import SVC
 from cloud_audit import data,iou,nms
 from selective_search_detection import proposed,coverage
 from rebuild_detector import descriptor,fit,make_jitter,safe_labels,draw_box
@@ -196,14 +197,40 @@ def run(root,out):
     stage1,stage1diag=first_pass(train,out)
     core,aug,counts=samples(train,stage1,out)
     model0,diag0=fit_rbf(*core,pca_dim=64)
-    del core
-    gc.collect()
-    # IMPORTANT: keep same fitted PCA/normalizers as the baseline when fitting
-    # augmented model, to isolate augmentation and avoid doubled memory.
+    # Freeze the baseline TRAIN-fitted PCA and standardizer for the augmented
+    # arm: augmentation changes ONLY the SVM fitting examples, not representation.
     norm,pca,scaler,_=model0
-    # Rebuild core from TRAIN samples for identical paired augmented fitting.
-    # Keep full core in memory until both SVCs are trained.
-    raise RuntimeError("E42 implementation guard: paired model fit requires core features retained")
+    def transformed(batch):
+        x,a,m,y=batch
+        z=pca.transform(norm.transform(x))
+        features=scaler.transform(np.c_[z,a,m]).astype(np.float32)
+        if not np.isfinite(features).all():raise ValueError("Invalid PCA input")
+        return features,y
+    core_z,y0=transformed(core)
+    aug_z,ya=transformed(aug)
+    del core,aug
+    gc.collect()
+    augmented_svm=SVC(C=3.0,kernel="rbf",gamma="scale",class_weight="balanced",
+         probability=True,random_state=47,cache_size=750)
+    tic=time.perf_counter()
+    augmented_svm.fit(np.vstack((core_z,aug_z)),np.r_[y0,ya])
+    diag_aug=dict(train_examples=len(y0)+len(ya),augmented_examples=len(ya),
+         train_seconds=time.perf_counter()-tic,support_vectors=int(augmented_svm.n_support_.sum()))
+    model_aug=(norm,pca,scaler,augmented_svm)
+    del core_z,aug_z,y0,ya
+    gc.collect()
+    results,proposals=eval_val(val,stage1,model0,model_aug,out)
+    report=dict(status="COMPLETE",train_images=len(train),val_images=len(val),
+      validation_GT=sum(len(gt) for _,gt in val),
+      split="all annotated-positive TRAIN, all VAL; official TEST not accessed",
+      augmented_methods=["whole-image horizontal flip with correct box mapping",
+         "conservative LAB brightness/contrast + HSV saturation"],
+      augmentation_counts=counts,stage1_training=stage1diag,
+      global_rbf_training=diag0,augmented_rbf_training=diag_aug,
+      proposals=proposals,results=results,
+      note="Both SVCs share baseline TRAIN-fitted PCA/scaler; same proposal bank and NMS. Full TRAIN excludes zero-annotation images because known incomplete labels.")
+    (out/"e42_report.json").write_text(json.dumps(report,indent=2))
+    print("E42 COMPLETE",json.dumps(report),flush=True)
 if __name__=="__main__":
     ap=argparse.ArgumentParser();ap.add_argument("--dataset",type=Path)
     ap.add_argument("--output",type=Path,default=Path("e42_results"))
