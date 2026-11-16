@@ -1,0 +1,49 @@
+name: Classical Learning Curve mAP50
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/learning_curve.py'
+      - '.github/workflows/learning-curve.yml'
+jobs:
+  curve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install traditional vision dependencies and COCO evaluator
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'pycocotools>=2.0.8,<3'
+      - name: Unit test sample labels and official mAP
+        run: |
+          python src/learning_curve.py --self-test
+          python src/metrics_map.py
+      - name: Download public Kaggle bird dataset
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import kagglehub
+          root=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          paths=[q.parent.parent for q in root.rglob('images/train') if (q.parent.parent/'labels/train').is_dir() and (q.parent.parent/'images/val').is_dir()]
+          if (root/'images/train').is_dir():paths.append(root)
+          paths=list(dict.fromkeys(paths))
+          assert len(paths)==1,paths
+          Path('dataset_root.txt').write_text(str(paths[0]))
+          PY
+      - name: Measure learning curve 35 100 300 700 and full training split
+        run: |
+          python -u src/learning_curve.py --dataset "$(cat dataset_root.txt)" --output curve_results --train-sizes 35 100 300 700 1369 --val-limit 60 --rounds 3
+      - name: Upload learning-curve plots and detailed results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: classical-learning-curve
+          path: curve_results/
+          if-no-files-found: warn
+          retention-days: 14
