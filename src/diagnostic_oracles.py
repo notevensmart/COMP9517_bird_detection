@@ -26,6 +26,9 @@ from hog_lbp_comparison import features
 
 def descriptor(image,b,letterbox=False):
     xy=np.r_[np.floor(b[:2]),np.ceil(b[2:])].astype(int)
+    h,w=image.shape[:2]
+    xy[0]=np.clip(xy[0],0,w);xy[2]=np.clip(xy[2],0,w)
+    xy[1]=np.clip(xy[1],0,h);xy[3]=np.clip(xy[3],0,h)
     crop=image[xy[1]:xy[3],xy[0]:xy[2]]
     if not crop.size:raise ValueError(f"Zero patch for {b}")
     gray=cv2.cvtColor(crop,cv2.COLOR_BGR2GRAY)
