@@ -1,0 +1,50 @@
+name: E23 Quality-Subset Negative Training
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/quality_subset_train.py'
+      - '.github/workflows/e23-quality-subset.yml'
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install classical CV and official COCO evaluation
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'pycocotools>=2.0.8,<3'
+      - name: Unit and metric tests
+        run: |
+          python src/quality_subset_train.py --self-test
+          python src/label_quality.py
+          python src/metrics_map.py
+      - name: Download Beach Bird dataset
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import kagglehub
+          root=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          matches=[p.parent.parent for p in root.rglob('images/train') if (p.parent.parent/'labels/train').is_dir() and (p.parent.parent/'images/val').is_dir()]
+          if (root/'images/train').is_dir():matches.append(root)
+          matches=list(dict.fromkeys(matches))
+          assert len(matches)==1,matches
+          Path('dataset_root.txt').write_text(str(matches[0]))
+          PY
+      - name: Matched small-subset retrain, official mAP and actual annotated visual review
+        run: |
+          python -u src/quality_subset_train.py --dataset "$(cat dataset_root.txt)" --train-n 45 --val-n 12 --output e23_results
+      - name: Preserve complete learning curves and original image overlays
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e23-quality-subset-diagnostic
+          path: e23_results/
+          if-no-files-found: warn
+          retention-days: 14
