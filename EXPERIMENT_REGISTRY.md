@@ -158,3 +158,27 @@ All FP counts above are **total final false-positive boxes across 12 VAL images 
 **Known possible issues identified by static code review:** fixed maximum 120 LoG peaks/image, resize distorts aspect ratios, training samples few backgrounds compared with hundreds scored at inference, NMS IoU=.35 may remove adjacent birds, and COCO maxDets=100 can constrain crowded images. These are hypotheses until measured.
 
 **Status at registration:** cloud run ongoing. Numerical results must only be copied from completed logs and archived artifacts. Preserve negative findings and any evaluation bugs separately from algorithmic limitations.
+
+
+### E16 actual audit findings — VALIDATED after repairing diagnostic boundary clipping
+
+Initial [failed audit](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43795502852) exposed a specific **diagnostic-only** crop bug: normalized YOLO labels close to x=0 may convert to x=-0.000256, and blindly applying `floor` then NumPy slicing produces an empty crop. Fixed clipping to [0,width]/[0,height] in oracle descriptor extraction and reran [successful audit 43795691581](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43795691581). Dataset: fixed 60 VAL images (376 birds); GT crop classifier used 100 independent TRAIN images.
+
+| Independent diagnostic | Measured result | What this proves |
+|---|---:|---|
+| COCO mAP50 on perfect GT boxes | **100.0%** | Basic bbox conversion/evaluator correct for this sample; no scene has >100 annotated birds |
+| Raw LoG+Otsu proposals R50 | **72.07%** (271/376) | A significant fraction of real birds has no matching IoU≥.5 proposal |
+| Raw proposals with GT-assisted optimal scoring | **71.33%** oracle COCO mAP50 | Proposal set contains high-recall detections when scored with **validation ground truth**; NOT detector performance |
+| Same proposal oracle with NMS IoU=.35 | **69.31%** oracle mAP50 | Current NMS loses ~2.03 points under GT-assisted ranking |
+| Same proposal oracle with NMS IoU=.65 | **70.42%** oracle mAP50 | Less aggressive NMS recovers ~1.11 points versus .35 under oracle scores |
+| GT crop HOG+LBP classifier on true VAL bird boxes (TRAIN GT crops / TRAIN negatives) | **280/376 = 74.47%** true birds margin≥0 | The feature/classifier can recognise many **perfectly cropped birds**. NOT detection recall or mAP |
+| Aspect-preserving letterbox variant | **279/376 = 74.20%** | Simple letterboxing alone did not improve positive-only GT crop classification in this audit |
+| Training-patch accuracy (GT crop test) | **100%** on 454 positive/1400 negative TRAIN patches | Training memorisation does not guarantee full-image precision, rank or localisation |
+| Size and aspect properties | 136/376 GT birds <1024 px²; 25 wide (>2:1), 11 tall (<0.5:1) | Most are small, some have unusual aspect ratios |
+| Existing E15 full-detector VAL mAP | **11.29%** | Very large gap between oracle capacity and actual ranked detections |
+
+**Critical nuance:** 74.47% is *positive-only recall on GT crops* with all localization made perfect; it says nothing about false positive rate on full images. 71.33% is an *oracle* that illegally uses validation labels to assign scores, so it must **never** be called actual model mAP. The 11.29% is the authentic deployable model mAP under the same 60-image validation seed. No inference leakage was introduced into E15.
+
+**Implications:** mAP formula itself is not the central failure. The likely bottleneck is poor *relative classification score ranking* on candidate crops amid ~957 candidates/image, coupled with missing candidates for 28% of birds and insufficient overlap at IoU .75 (only 17.29%). More hard-negative mining cannot repair localisation or crop-shift alone. Systematically test training from GT positives with jittered realistic positive crops, training against mined *post-NMS* false alarms, and score distribution / precision-recall diagnostics, before declaring classical methods intrinsically weak. NMS=.65 is a testable, small secondary gain. Negative-mining diversity and letterboxing alone did not deliver evidence of a major fix.
+
+**Artifacts:** [run output with JSON diagnostics and visual overlays](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43795691581/artifacts/14193588457). Green=GT bird boxes, blue=candidate boxes with IoU≥.5. The oracle method is evaluation/diagnostic only and MUST NOT be included among deployed model scores in the paper.
