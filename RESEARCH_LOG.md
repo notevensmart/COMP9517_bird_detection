@@ -103,3 +103,19 @@ For the stricter **margin >= 1.0** diagnostic:
 All figures are from **training images only**; they are not held-out validation mAP. They demonstrate that reducing output count requires a precision/recall trade-off. Margin 1.0 was **not** selected as a calibrated deployment threshold. Hard-negative mining helps but the tiny overfitting gate remains **FAILED**: no setting reaches 90% raw-image train AP50.
 
 **Current decision:** use spatially balanced 200-per-scale proposals as the efficient *research candidate generator*, keep GT-free inference, final NMS, score threshold and max-detection safeguards, but DO NOT claim the current HOG/SVM classifier is deployment-ready or ready for full training. Next improvements should focus on a more discriminative classifier, better small-object representation and box regression or a suitable learned detector. A final threshold must be chosen using validation and frozen before one-time test evaluation.
+
+
+## Stage H — Fair HOG vs HOG+LBP validation ablation
+
+[GitHub Actions run](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43788975227) completed successfully. The same seeded **40 train / 12 validation images** (77 annotated validation birds), same spatial-50 generator (1,350 candidate boxes/image), IoU, NMS, and SVM hard-negative mining protocol were used. These are **single-class continuous AP@0.5** on a small exploratory validation subset, **not test mAP**:
+
+| Method | Validation AP@0.5 | Mean boxes after NMS | Mean candidate count |
+|---|---:|---:|---:|
+| HOG + linear SVM | **3.73%** | 272.33 | 1,350 |
+| HOG + 4×4 spatial uniform LBP + linear SVM | **7.82%** | 272.58 | 1,350 |
+
+LBP helps but remains unsatisfactory. Thresholding, localization, feature separation and NMS require further failure analysis. The 300-NMS-box cap is a computational reporting cap; many boxes still survive.
+
+## Classical-only constraint from the team
+
+Only **classical computer vision and traditional ML** methods are permitted in this workstream. No pretrained neural models, CNNs, SAM, DINO or learned foundation-model visual embeddings. The previously tested OpenCV **EdgeBoxes + structured-edge pretrained model** may incorporate learned (non-neural) structured forests, so describe its training provenance clearly; prefer purely handcrafted edge/texture/morphology/contour methods when strict training-free proposals are required. HOG, LBP, SVM and classical part-based detection remain in scope. Existing experiment results are historical, not approval of neural components in a final model.
