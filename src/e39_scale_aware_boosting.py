@@ -192,24 +192,103 @@ def collect_training(bank,stage1):
     if not np.isfinite(arr).all():raise ValueError("Nonfinite supervised features")
     return arr,yy,a,counts
 
+def augment_image_boxes(image,boxes,mode):
+    """TRAIN only; preserve exact 512px geometry, never invent new bird shapes."""
+    if image.dtype!=np.uint8 or image.ndim!=3 or image.shape[2]!=3:
+        raise ValueError("Expected uint8 BGR image")
+    boxes=np.asarray(boxes,dtype=np.float32).reshape(-1,4)
+    h,w=image.shape[:2]
+    if mode=="flip":
+        transformed=cv2.flip(image,1)
+        flipped=boxes.copy()
+        flipped[:,0]=w-boxes[:,2]
+        flipped[:,2]=w-boxes[:,0]
+        if len(flipped) and ((flipped[:,2:]<=flipped[:,:2]).any() or
+                             not np.isfinite(flipped).all()):
+            raise ValueError("Horizontal flip created invalid boxes")
+        return transformed,flipped
+    if mode=="photo":
+        # Conservative luminance/contrast and colour perturbation, whole image
+        # and SAME boxes. No destructive crop or geometric warping.
+        lab=cv2.cvtColor(image,cv2.COLOR_BGR2LAB)
+        L,A,B=cv2.split(lab)
+        L=np.clip(L.astype(np.float32)*1.06+6,0,255).astype(np.uint8)
+        recoloured=cv2.cvtColor(cv2.merge((L,A,B)),cv2.COLOR_LAB2BGR)
+        hsv=cv2.cvtColor(recoloured,cv2.COLOR_BGR2HSV)
+        hsv[:,:,1]=np.clip(hsv[:,:,1].astype(np.float32)*.94,0,255).astype(np.uint8)
+        return cv2.cvtColor(hsv,cv2.COLOR_HSV2BGR),boxes.copy()
+    raise ValueError("Unknown augmentation mode")
+
+def augmented_examples(train,stage1,output):
+    """Extra positives AND safe negatives, per-image capped, TRAIN only."""
+    rng=np.random.default_rng(8844)
+    X=[];Y=[];areas=[];samples=[];audit=[]
+    out=output/"preprocessing";out.mkdir(parents=True,exist_ok=True)
+    for imageidx,rec in enumerate(train):
+        image=cv2.imread(str(rec["path"]),cv2.IMREAD_COLOR)
+        pos=np.asarray(rec["pos"],int)
+        neg=np.asarray(rec["neg"],int)
+        scores=stage1.decision_function(rec["X"])
+        if len(pos)>12:pos=rng.choice(pos,12,replace=False)
+        if len(neg):
+            neg=neg[np.argsort(-scores[neg],kind="stable")[:12]]
+        selected=np.r_[pos,neg]
+        labels=np.r_[np.ones(len(pos),int),np.zeros(len(neg),int)]
+        if not len(selected):continue
+        originals=rec["boxes"][selected]
+        for mode in ("flip","photo"):
+            im,b=augment_image_boxes(image,originals,mode)
+            for ix,(rect,target) in enumerate(zip(b,labels)):
+                feat=normalized_features(im,rect)
+                X.append(feat);Y.append(int(target))
+                areas.append(float(np.prod(rect[2:]-rect[:2])))
+                samples.append(dict(image=rec["path"].name,mode=mode,label=int(target)))
+                if imageidx<2 and ix<2:
+                    raw=cropbox(image,originals[ix])
+                    transformed=cropbox(im,rect)
+                    a=cv2.resize(raw,(96,96),interpolation=cv2.INTER_NEAREST)
+                    bb=cv2.resize(transformed,(96,96),interpolation=cv2.INTER_NEAREST)
+                    tile=np.hstack((a,bb))
+                    cv2.putText(tile,f"{mode} GT-safe {int(target)}",(3,15),
+                                cv2.FONT_HERSHEY_SIMPLEX,.36,(255,255,255),1)
+                    audit.append(tile)
+    if audit:
+        cv2.imwrite(str(out/"train_augmentation_examples.jpg"),
+                    np.vstack(audit),[cv2.IMWRITE_JPEG_QUALITY,90])
+    xx=np.asarray(X,dtype=np.float32)
+    yy=np.asarray(Y,int);aa=np.asarray(areas,np.float32)
+    if len(xx)==0 or not np.isfinite(xx).all():
+        raise RuntimeError("Augmentation had missing or nonfinite features")
+    info=dict(augmented_patches=len(yy),positive=int(yy.sum()),negative=int((yy==0).sum()),
+              modes=["whole-image horizontal flip with box remap",
+                     "mild LAB luminance contrast + HSV saturation"],
+              train_only=True,samples_per_class_per_image_per_mode=12)
+    (out/"augmentation_checks.json").write_text(json.dumps(info,indent=2))
+    print("E39 TRAIN AUGMENT VERIFIED",json.dumps(info),flush=True)
+    return xx,yy,aa,info
+
 def lightgbm_model(seed):
     return LGBMClassifier(n_estimators=210,learning_rate=.045,num_leaves=15,
         min_child_samples=14,max_depth=-1,colsample_bytree=.85,
         subsample=.9,subsample_freq=1,reg_lambda=4.0,
         class_weight="balanced",n_jobs=2,verbosity=-1,random_state=seed)
 
-def fit_boosters(train,stage1):
+def fit_boosters(train,stage1,augmentation=None,seed=SEED):
     X,y,areas,counts=collect_training(train,stage1)
+    if augmentation is not None:
+        ax,ay,aa,_=augmentation
+        if X.shape[1]!=ax.shape[1]:raise ValueError('Augmentation feature dimensions do not match')
+        X=np.vstack((X,ax));y=np.r_[y,ay];areas=np.r_[areas,aa]
     models={}
     t=time.perf_counter()
-    models["global"]=lightgbm_model(SEED)
+    models["global"]=lightgbm_model(seed)
     models["global"].fit(X,y)
     masks={"small":areas<TINY,"other":areas>=TINY}
     for k,mask in masks.items():
         classes=np.bincount(y[mask],minlength=2)
         if min(classes)<25:
             raise ValueError("Insufficient labelled examples for "+k+" expert: "+str(classes))
-        models[k]=lightgbm_model(SEED+(1 if k=="small" else 2))
+        models[k]=lightgbm_model(seed+(1 if k=="small" else 2))
         models[k].fit(X[mask],y[mask])
     stats=dict(**counts,features=X.shape[1],
         example_count=len(y),train_time_seconds=time.perf_counter()-t,
@@ -235,10 +314,10 @@ def boost_scores(models,rec,mode):
             result[mask]=.50*global_s[mask]+.50*expert
     return result
 
-def comparisons(bank,base,rbf,boosters,out):
+def comparisons(bank,base,rbf,boosters,boosters_aug,out):
     out.mkdir(parents=True,exist_ok=True)
     vis=out/"visual";vis.mkdir(exist_ok=True)
-    variants=("rbf_baseline","global_boosted","scale_experts")
+    variants=("rbf_baseline","global_boosted","scale_experts","global_augmented","scale_augmented")
     predictions={k:[] for k in variants};rows=[]
     for count,rec in enumerate(bank,1):
         b=rec["boxes"]
@@ -246,7 +325,9 @@ def comparisons(bank,base,rbf,boosters,out):
             rec["margin"]=base.decision_function(rec["X"])
             old=.5*rec["margin"]+.5*rbf_logits(rbf,rec)
             sc={"rbf_baseline":old,"global_boosted":boost_scores(boosters,rec,"global"),
-                "scale_experts":boost_scores(boosters,rec,"expert")}
+                "scale_experts":boost_scores(boosters,rec,"expert"),
+                "global_augmented":boost_scores(boosters_aug,rec,"global"),
+                "scale_augmented":boost_scores(boosters_aug,rec,"expert")}
         else:sc={x:np.empty(0) for x in variants}
         for method in variants:
             score=sc[method]
@@ -297,6 +378,16 @@ def tests():
     assert len(tiny)==len(f) and np.isfinite(tiny).all()
     border=normalized_features(im,[0,0,45,96])
     assert len(border)==len(f)
+    source_boxes=np.array([[12,20,60,32],[0,0,40,96]],dtype=np.float32)
+    flipped,fb=augment_image_boxes(im,source_boxes,"flip")
+    assert np.array_equal(flipped,cv2.flip(im,1))
+    assert np.array_equal(fb[:,0],im.shape[1]-source_boxes[:,2])
+    assert np.array_equal(fb[:,2],im.shape[1]-source_boxes[:,0])
+    assert np.array_equal(cropbox(flipped,fb[0]),cv2.flip(cropbox(im,source_boxes[0]),1))
+    bright,pb=augment_image_boxes(im,source_boxes,"photo")
+    assert np.array_equal(pb,source_boxes) and bright.shape==im.shape
+    assert np.mean(np.abs(bright.astype(float)-im.astype(float)))>0.1
+    assert len(normalized_features(flipped,fb[0]))==len(f)
     try:
         normalized_features(im,[20,20,20,30])
         raise AssertionError("Invalid crop incorrectly accepted")
@@ -315,15 +406,19 @@ def run(root,out,train_n,val_n):
     tb,trainchecks=features_for_bank(tb,out,"TRAIN")
     vb,valchecks=features_for_bank(vb,out,"VAL")
     boosters,fit=fit_boosters(tb,base)
-    score,gate=comparisons(vb,base,rbf,boosters,out)
+    augmented=augmented_examples(tb,base,out)
+    augmented_fit_input=augmented[:3]
+    boosters_aug,augfit=fit_boosters(tb,base,augmentation=augmented_fit_input)
+    score,gate=comparisons(vb,base,rbf,boosters,boosters_aug,out)
     report=dict(status="COMPLETE",split="TRAIN/VAL only; TEST not accessed",
        train_images=len(train),val_images=len(val),val_GT=sum(len(g) for _,g in val),
        paired_proposals=True,seeded_deterministic_selective_search=True,
        baseline="Same deterministic SS proposals, TRAIN-only HOG+LBP PCA64 RBF",
        preprocessing=dict(train=trainchecks,val=valchecks,
          method="Native BGR crop; aspect-preserving 64x64 neutral-padded letterbox; CLAHE only grayscale gradient channel; spatial HSV/LAB, LBP, native geometry/context"),
-       learning=fit,baseline_train=diag,proposals=coverage(vb),results=score,promote_gate=gate,
+       learning=fit,augmented_learning=augfit,augmentation=augmented[3],baseline_train=diag,proposals=coverage(vb),results=score,promote_gate=gate,
        limitations=["SVM/boosted tree ranking compared on same GT-blind proposal bank",
+           "Augmented and nonaugmented boosted models use identical validation images",
            "Zero-GT TRAIN excluded due incomplete labels",
            "GT only for TRAIN labels and VAL diagnostics, not inference",
            "No test rerun; further confirmation needed on larger VAL",
