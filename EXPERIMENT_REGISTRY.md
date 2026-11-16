@@ -195,3 +195,16 @@ Initial [failed audit](https://github.com/notevensmart/COMP9517_bird_detection/a
 **Source:** `src/rebuild_detector.py`, `.github/workflows/classical-repair.yml`. [Github Actions experiment](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43796575319).
 
 **Status when registered:** experiment queued. Do not publish any success or mAP improvement unless measured from completed logs. Compare A/B/C within E17; E15's 1,369-image result is not a matched score because E17 uses 100 TRAIN and 30 VAL.
+
+
+## E17 — Paired pipeline repair + visual QA (pre-registered)
+
+**Research question:** Is poor 11.29% validation mAP caused primarily by training positive-crop mismatch and insufficient full-image hard false-alarm mining rather than inherent classical detector limits?
+
+**Source:** `src/repair_and_visual_audit.py` and [run 43797974207](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43797974207). Protocol: paired legacy vs repaired model on same fixed-seed **100 TRAIN /30 VAL** images, identical image-only LoG+Otsu candidate generator (up to 120 blob peaks), identical HOG+4x4 uniform LBP descriptors (1924 dimensions), linear SVM C=.01, three hard-negative mining rounds. Primary metric **official COCO 101-point single-class bbox mAP@IoU 0.50 (maxDets 100)**; per-image FP classification after margin>=0 NMS=.35 is supplemental.
+
+**Repairs**: clipping pixel coordinates to valid image dimensions after converting YOLO floating GT; train-only GT boxes and light IoU>=.55 centre/scale jitter as positive examples (plus positive detector-like proposals); train-only mining from **real NMS-filtered full-image false alarms** with margin>=0, per-image limit 12, per-round global max 500. Legacy arm uses sampled positive detector proposals and global top-500 background negatives.
+
+**Visual QA:** selected crowded, empty and sparse scenes receive four-panel JPEGs: GT (green), pixel-only proposals (blue), legacy detections (green where IoU>=.5, red otherwise), repaired detections (same colours), with detection margins printed on top-ranked boxes. These visual labels are diagnostic and never used to train models. Files archived under `repair_results/visuals/` plus `repaired_detector_results.json` and `repaired_detector_per_image.csv`.
+
+**Scientific limitations:** test split untouched; paired 30-image validation only, not E15's 60-image dataset; results must NOT be conflated with E15. The visual green/rule uses 'overlaps some GT at >=0.5', not one-to-one matching (duplicate boxes may appear green). Inspect against FP taxonomy as well. At registration cloud run in progress, no metrics available.
