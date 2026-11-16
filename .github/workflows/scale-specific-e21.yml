@@ -1,0 +1,49 @@
+name: Scale-specific Classical Detector Ablation E21
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/scale_specific_detector.py'
+      - '.github/workflows/scale-specific-e21.yml'
+jobs:
+  e21:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install handcrafted CV and COCO evaluator
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'pycocotools>=2.0.8,<3'
+      - name: Unit test sizes features and COCO AP
+        run: |
+          python src/scale_specific_detector.py --self-test
+          python src/metrics_map.py
+      - name: Download public bird dataset
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import kagglehub
+          root=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          c=[p.parent.parent for p in root.rglob('images/train') if (p.parent.parent/'labels/train').is_dir() and (p.parent.parent/'images/val').is_dir()]
+          if (root/'images/train').is_dir():c.append(root)
+          c=list(dict.fromkeys(c))
+          assert len(c)==1,c
+          Path('dataset_root.txt').write_text(str(c[0]))
+          PY
+      - name: Matched scale-SVM and handcrafted colour-feature experiment
+        run: |
+          python -u src/scale_specific_detector.py --dataset "$(cat dataset_root.txt)" --output e21_results --train-limit 100 --val-limit 30
+      - name: Archive COCO mAP, image error taxonomy and genuine visual overlays
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e21-scale-specific-cv
+          path: e21_results/
+          if-no-files-found: warn
+          retention-days: 14
