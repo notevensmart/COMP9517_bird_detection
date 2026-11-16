@@ -1,0 +1,56 @@
+name: E39 Classical Scale-Aware Boosting and Preprocessing Audit
+on:
+  push:
+    branches: ['research/e39-scale-aware-boosting']
+    paths:
+      - 'src/e39_scale_aware_boosting.py'
+      - '.github/workflows/e39-scale-boosting.yml'
+  workflow_dispatch:
+jobs:
+  paired-boosting:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      OPENBLAS_NUM_THREADS: '2'
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install strictly classical OpenCV, LightGBM and COCO dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'opencv-contrib-python-headless>=4.9,<5' 'pycocotools>=2.0.8,<3' 'lightgbm>=4.0,<5'
+      - name: Validate aspect, colour, augmentation box maps and metrics
+        run: |
+          python src/e39_scale_aware_boosting.py --self-test
+          python src/metrics_map.py
+          python src/selective_search_detection.py --self-test
+      - name: Get original public dataset without accessing TEST
+        run: |
+          python - <<'PY'
+          import kagglehub
+          from pathlib import Path
+          root=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          matches=[p.parent.parent for p in root.rglob('images/train')
+                   if p.is_dir() and (p.parent.parent/'labels/train').is_dir()
+                   and (p.parent.parent/'images/val').is_dir()]
+          if (root/'images/train').is_dir():matches.append(root)
+          matches=list(dict.fromkeys(matches))
+          assert len(matches)==1,matches
+          Path('dataset_root.txt').write_text(str(matches[0]))
+          PY
+      - name: E39 paired classical model evaluation plus preprocessing and augmentation image review
+        run: |
+          python -u src/e39_scale_aware_boosting.py --dataset "$(cat dataset_root.txt)" --output e39_results --train-n 45 --val-n 30
+      - name: Archive real crop visual checks, detection outputs and comparisons
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e39-scale-aware-boosting-and-augmentation
+          path: e39_results/
+          retention-days: 14
+          if-no-files-found: warn
