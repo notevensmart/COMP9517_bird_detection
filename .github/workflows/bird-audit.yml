@@ -47,6 +47,8 @@ jobs:
         run: python src/tiny_overfit.py --dataset "$(cat dataset_root.txt)" --output artifacts
       - name: Train tiny anchor-based detector and check overfit
         run: python src/tiny_anchor_train.py --dataset "$(cat dataset_root.txt)" --output artifacts
+      - name: Controlled hard-negative mining (tiny train set)
+        run: python src/hard_negative_mining.py --dataset "$(cat dataset_root.txt)" --output artifacts --rounds 6
       - name: Upload diagnostics and results
         if: always()
         uses: actions/upload-artifact@v4
