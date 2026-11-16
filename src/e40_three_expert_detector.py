@@ -142,7 +142,7 @@ def evaluate(bank,stage1,rbf_model,models,calibrators,refiner,out):
     return results
 def tests():
     preprocess_tests()
-    b=np.array([[10,10,20,20],[11,11,21,21],[30,30,40,40]],np.float32)
+    b=np.array([[10,10,20,20],[12,12,22,22],[30,30,40,40]],np.float32)
     sc=np.array([.9,.8,.7])
     k=crowd_suppress(b,sc)
     assert np.array_equal(k,[0,1,2]) # small neighbours allowed at IoU .50
