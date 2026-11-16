@@ -80,3 +80,11 @@ Research decision: Otsu region refinement improves proposal coverage and AP, but
 **Methodology caveat:** Earlier E11's LoG+Otsu HOG *continuous* AP50 9.26% used a **different training sampler**; E13 HOG continuous AP50 4.46% is not a contradiction or matched comparison. Compare only the E13 rows against each other.
 
 **Next question:** Can better localisation, colour/shape features, or actual rotation-invariant Fourier-HOG improve mAP without reverting to thousands of candidates? Prioritise improving the fraction of birds whose generated boxes achieve IoU≥0.5, and reducing high-scoring near-miss predictions. Validate with official mAP and exact FP taxonomy again.
+
+## E14 — Controlled hard-example mining ablation (registered before results)
+
+**Hypothesis:** Global top-500 hard-negative selection over-samples duplicate beach backgrounds; per-image/per-scale diversity, training-only hard-positive weights and a bounded balanced negative cache may improve precision without suppressing birds.
+
+**Code:** `src/mining_ablation.py`; **cloud run:** [43792817123](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43792817123). Four variants under a shared LoG+Otsu proposal and HOG+4×4 uniform-LBP descriptor bank: (A) global top-scoring mining; (B) diversity-filtered hard negatives (per-image, area-bin and IoU controls); (C) B plus upweighting up to 120 lowest-margin training positives; (D) C plus bounded 1,400-negative cache (70% hard, 30% distributed reserve). Same 35 TRAIN /12 VAL image selection as E13; all receive three mining rounds. COCO 101-point bbox mAP50 with maxDets=100 is the PRIMARY metric, measured after **each** round. Additional diagnostics: unmatched final boxes (background, localisation, duplicate), missed birds, false detections on empty images, inference seconds and training sample mix. All training labels/weighting/mining use TRAIN only; any selection by VAL is exploratory and requires untouched TEST confirmation.
+
+**Status:** Cloud execution in progress when this entry was created. Do **not** invent or prefill numerical results. Update after the completed workflow and logs are inspected.
