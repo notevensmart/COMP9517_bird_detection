@@ -26,3 +26,13 @@ python src/cloud_audit.py --dataset /path/to/Dataset --output artifacts
 ```
 
 No dataset images, pretrained weights, or private credentials are committed.
+
+
+## E31: classical machine-learning classifier ablation (16 Nov 2026)
+
+The [E31 cloud workflow](https://github.com/notevensmart/COMP9517_bird_detection/actions/workflows/e31-classifiers.yml) compares four **non-neural** classifiers on the same existing LoG/Otsu proposals and 64×64 HOG+LBP descriptors: Linear SVM, RBF SVM, Random Forest and LightGBM. It trains on 45 annotated TRAIN images and evaluates on a fixed 30-image VAL subset with COCO 101-point AP50, top-20 ranking, scale/crowding diagnostics, training time and scoring latency. No TEST images, missing-label zero-GT TRAIN negatives, extra hard-negative rounds or validation hyperparameter searches are used.
+
+- Source: [src/classifier_benchmark.py](src/classifier_benchmark.py)
+- Protocol, historical failures and status: [RESEARCH_LOG.md](RESEARCH_LOG.md)
+- Download run artifact `e31-classical-classifier-results` for `e31_results.json` and `e31_table.csv`.
+- **Results are unverified until the workflow completes.** A high patch-level training accuracy, proposal recall, or workflow success is not evidence of good validation mAP.
