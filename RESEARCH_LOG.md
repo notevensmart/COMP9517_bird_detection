@@ -285,3 +285,10 @@ Actual E34 4-model photo panels inspected: on crowded `1452`, RBF returns 4/26 t
 Actual photographed scenes viewed: small crowded shorebirds `1452` top20 improves **4→6** with box refinement and some blue boxes better aligned, but large boxes falsely cover surf/water. On close-up swans `1399`, refiner **regresses 1→0** top20 TPs and distorts some part/whole boxes; `1560` declines 5→4, `1509` 1→0, and `1434` 11→9. Thus a single global regression head has **uneven scene/scale effects** despite positive overall mAP; do not claim it solved large-bird localization. Seaweed and drones remain background confusers. The model still outputs >1000 FPs in top20 rankings across these 60 images. Later work should examine shape-aware, possibly size-conditioned regression; do not indiscriminately widen NMS or increase proposals.
 
 The original annotations are preserved, especially the suspicious zero-GT VAL image 1435. Training only included images with GT bird boxes due known label issues. No TEST used.
+
+
+### E33 independent holdout acceptance clarification (before TEST)
+
+E32's global-regression +1.8576pp gain **did not pass** the predeclared +2pp development gate. It may be independently **replicated as an explicitly exploratory follow-up**, not retrospectively marked a successful E32 gate. For any correction selected to enter E33, promotion to full TEST must meet a new **predeclared +1.0pp COCO mAP50** gain over the paired unmodified SS/RBF baseline on the 231-image complementary VAL subset, no loss in top20 TP, <=3pp small-object top100 recall reduction, and <=3pp crowded recall reduction. If not, freeze and test the baseline. This is VAL-only policy and is fixed **before any TEST images are accessed**.
+
+This prevents accidental promotion of a small subset-only win; qualitative regression on large swans is documented regardless of overall score. E33 image processing time excludes access to GT and diagnostic overlap calculations; GT is read only after image-only scores and final boxes are already determined.
