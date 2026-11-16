@@ -142,3 +142,19 @@ All FP counts above are **total final false-positive boxes across 12 VAL images 
 **Figure citations in paper:** `learning_curve_map50.png` is the training-size vs official mAP50 curve; `learning_curve_errors.png` plots final false-positive boxes vs missed birds, both over the **same** VAL set. Exact underlying values are in `learning_curve.csv` and `learning_curve_all_rounds.csv` (every intermediate mining round). Neither held-out TEST GT nor other external pretrained models were used. This is exploratory VAL evaluation; freeze the final model and use the untouched TEST split for the final reported unbiased estimate.
 
 **Decision:** Do not invest in simply adding more training examples to this unchanged pipeline. Prioritise improving the IoU of classical candidates (local segmentation, box refinement) and reducing hard background mistakes with more discriminative handcrafted features. Document the saturation as a scientifically relevant limitation of this particular traditional detector.
+
+
+## E16 — Independent oracle-based debugging of low classical mAP (registered pre-results)
+
+**Motivation:** User challenges implausibly low mAP despite 1,369 training images. Treat the issue as a falsifiable engineering/research hypothesis, **not** as an inherent classical-model limit.
+
+**Independent cloud run:** [GitHub Actions 43795502852](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43795502852); code `src/diagnostic_oracles.py`. Audit 60 fixed VAL images using LoG+Otsu proposal generation and 100 TRAIN images for oracle-crop classification (no held-out labels used in fitting). Diagnostics include:
+1. Original annotation geometry, bird-box aspect ratios, density and small-object counts; detect mismatch or dense scenes exceeding the COCO 100-detection per-image cap.
+2. Proposal recall@0.5/.75, image-wise candidate coverage, IoU distribution; visual GT green boxes and matching blue candidate boxes.
+3. **Perfect ground-truth-box prediction oracle** (expected COCO mAP50 ~1 if <=100 GT per image). If this fails, fix evaluation before using any prior results.
+4. **Oracle proposal ranking** (GT-derived labels only for diagnostic upper-bound): raw candidates versus NMS IoU=.35 versus .65. These are NOT deployed validation mAP and must never be included in final performance numbers.
+5. Classifier trained on TRAIN **ground-truth bird crops**, with TRAIN background negatives, then evaluated on exact VAL ground-truth bird crops, using both naive distorted 64x64 resize and aspect-preserving letterbox. This is a **recognition diagnostic**, not a detector metric.
+
+**Known possible issues identified by static code review:** fixed maximum 120 LoG peaks/image, resize distorts aspect ratios, training samples few backgrounds compared with hundreds scored at inference, NMS IoU=.35 may remove adjacent birds, and COCO maxDets=100 can constrain crowded images. These are hypotheses until measured.
+
+**Status at registration:** cloud run ongoing. Numerical results must only be copied from completed logs and archived artifacts. Preserve negative findings and any evaluation bugs separately from algorithmic limitations.
