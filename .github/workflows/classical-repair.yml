@@ -1,0 +1,64 @@
+name: Classical Detector Repair and Visual Audit
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/rebuild_detector.py'
+      - '.github/workflows/classical-repair.yml'
+permissions:
+  contents: write
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install traditional computer vision and official evaluator
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'pycocotools>=2.0.8,<3'
+      - name: Test crop, positive jitter, negatives and mAP
+        run: |
+          python src/rebuild_detector.py --self-test
+          python src/metrics_map.py
+      - name: Download public Beach Bird dataset
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import kagglehub
+          root=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          matches=[q.parent.parent for q in root.rglob('images/train') if (q.parent.parent/'labels/train').is_dir() and (q.parent.parent/'images/val').is_dir()]
+          if (root/'images/train').is_dir():matches.append(root)
+          matches=list(dict.fromkeys(matches))
+          assert len(matches)==1,matches
+          Path('dataset_root.txt').write_text(str(matches[0]))
+          PY
+      - name: Compare legacy positives vs GT jitter vs real image mining
+        run: |
+          python -u src/rebuild_detector.py --dataset "$(cat dataset_root.txt)" --output repair_results --train-limit 100 --val-limit 30
+      - name: Upload raw visual and metric artifacts even if the experiment fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: classical-repair-visual-audit
+          path: repair_results/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: Commit small visual inspection contact sheet for analysis
+        if: success()
+        run: |
+          mkdir -p diagnostics
+          cp repair_results/contact_sheet_embed.json diagnostics/repair_contact_sheet_embed.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add diagnostics/repair_contact_sheet_embed.json
+          git diff --cached --quiet && exit 0
+          git commit -m "Archive compact visual proof of bird detection repair experiment"
+          git push
