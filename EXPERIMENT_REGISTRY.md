@@ -451,3 +451,27 @@ The NMS.65 ablation improves over NMS.35 under matched conditions (e.g. round1 +
 **Controls:** GT only for TRAIN regression fitting and diagnostic VAL evaluation; no GT-derived adjustments at inference; TEST untouched. E26 ablation intentionally exploratory because E24 fusion alpha already selected using prior VAL. Do not promote to full training without improvement in official mAP, top20 false ranking and true GT localisation, with human review of screenshots. The regressor is restricted to near-matched TRAIN proposals because regressing wholly background crops is ill-posed.
 
 **Status:** code/workflow committed before results. Log observed result even if negative; no claimed gain prior to job conclusion.
+
+
+### E26 completed: geometry and Soft-NMS improve modestly, background FPs persist
+
+[Successful run 43806799861](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43806799861), [real overlay images and metrics artifact 14198742363](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43806799861/artifacts/14198742363). Frozen 45 TRAIN /30 VAL split, 156 GT birds. TRAIN-only Ridge bbox regressor fit on 550 high-IoU candidate/GT pairs from 35 TRAIN images. 33 handcrafted geometric/color/edge input features plus score; normalized centre/size deltas, clipped.
+
+| Paired detector | COCO VAL mAP50 | Top20 TP /600 | Top20 FP /600 | FN @margin0 |
+|---|---:|---:|---:|---:|
+| Stage1 only, NMS=.35 | 3.37% | 38 | 562 | 95 |
+| RF cascade, NMS=.35 | 6.47% | 56 | 544 | 94 |
+| RF cascade + Ridge box correction, NMS=.35 | 6.69% | 59 | 541 | 93 |
+| RF cascade + Ridge, NMS=.65 | 6.48% | 56 | 544 | 73 |
+| RF cascade + Gaussian Soft-NMS | 6.36% | 55 | 545 | 75 |
+| RF cascade + Ridge + Gaussian Soft-NMS | **7.01%** | **59** | **541** | 68 |
+
+Raw proposal maximum IoU with GT improved mean **0.58797→0.59217**; IoU>=.5 covered birds **114→115/156**; IoU>=.75 **30→34/156**. Therefore this proposed regression repairs a *small* fraction of localisation but does not solve major unannotated/background/ranking errors. Gaussian Soft-NMS alone is worse than baseline cascade; with regression it increases mAP +0.53pp, but generates many scores>=0 and is not a precision fix. Actual full contact-sheet visual inspection of `cascade_refined_softnms.jpg` shows dense false boxes over washed-up seaweed/branch piles and drone/airplane body, many giant red boxes over/around shore birds, and poor detection of reeds-background birds. The correct decision is not to promote this configuration as "fixed" or train on all images yet. Retain E26 as **limited validated geometric improvement** and prioritize discriminative training with verified semantic-background negatives.
+
+### E27 pre-registered: add audited negative-only TRAIN scenes
+
+**Research hypothesis:** the frozen E25 45-TRAIN stage2 RandomForest never sees exclusively bird-free images during fitting, so it lacks semantic-background examples of seaweed, waves, sea rocks, sand edges, quadcopters, bats, kites and cloud patterns. E25 remains frozen; compare RF stage2 trained on 45 annotated-positive TRAIN scenes to identical RF stage2 trained on the same 45 scenes **plus 14 manually inspected zero-annotation TRAIN negative scenes**, after checking against the saved empty-label contact sheets.
+
+**Manifest:** `src/audited_negative_scene_study.py` contains filenames and human-readable scene reasons: `0012,0051,0052,0055,0057,0067,0091,0150,0301,0302,0304,0305,0306,0307`. Original supplied annotations are all zero for these; source images must be rechecked if image scale/crops cause uncertainty. The known mislabeled `0149,0418` TRAIN images are **excluded**. The original 45 annotated-positive TRAIN images and same fixed 30 VAL images are shared. RF stage2 training uses proposal IoU labels from TRAIN only (positive>=.5, negative<.1 with containment exclusion); no VAL label used in fit, same alpha=.50, LoG/Otsu, stage1, post-processing and official COCO evaluation.
+
+**Acceptance:** require >+2pp mAP50 AND lower top20 FP **and** visually fewer incorrect detections in real all-background shore/aircraft scenes. As a paired isolated training-corpus ablation, report failure if these checks are not met, and avoid extrapolating from 30 VAL images to full dataset or >=50% mAP. Source: `src/audited_negative_scene_study.py`, [workflow](https://github.com/notevensmart/COMP9517_bird_detection/actions/workflows/e27-negative-scenes.yml). **Status: running, no results yet.**
