@@ -2,7 +2,7 @@
 Streaming Selective Search banks prevent retaining ~1.3M 1924D proposals.
 Classical HOG/LBP PCA64 RBF, no neural models. VAL only, no TEST.
 """
-import argparse,csv,json,time,gc
+import argparse,csv,json,time,gc,joblib
 from pathlib import Path
 import cv2,numpy as np
 from sklearn.svm import SVC
@@ -41,6 +41,9 @@ def prep(path,gt,stage1=None,need_features=True):
         X=np.stack([descriptor(im,x) for x in b]) if len(b) else np.empty((0,1924),np.float32)
     else:X=None
     rec=dict(path=path,gt=gt,boxes=b,pos=p,neg=n,X=X)
+    if stage1 is not None and need_features:
+        rec["aux"]=np.stack([secondary_features(im,box) for box in b]).astype(np.float32) if len(b) else np.empty((0,32),np.float32)
+        assert rec["aux"].shape==(len(b),32) and np.isfinite(rec["aux"]).all(), "Invalid VAL auxiliary features"
     if stage1 is not None:
         rec["margin"]=stage1.decision_function(X) if len(X) else np.empty(0)
     return rec,im
@@ -189,10 +192,28 @@ def tests():
     assert np.array_equal(map_box(b,48,"photo"),b)
     assert aug_image(im,"photo").shape==im.shape
     print("E42 augmentation and bbox geometry self-test PASS",flush=True)
-def run(root,out):
+    # Regression: the inference record must satisfy rbf_logits' aux contract.
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.decomposition import PCA
+    rng=np.random.default_rng(99)
+    tx=rng.normal(size=(12,1924)).astype(np.float32)
+    ta=rng.normal(size=(12,32)).astype(np.float32)
+    tm=rng.normal(size=12).astype(np.float32)
+    norm=StandardScaler().fit(tx);pca=PCA(n_components=4,random_state=99).fit(norm.transform(tx))
+    scaler=StandardScaler().fit(np.c_[pca.transform(norm.transform(tx)),ta,tm])
+    tz=scaler.transform(np.c_[pca.transform(norm.transform(tx)),ta,tm])
+    clf=SVC(C=1,kernel="rbf",probability=True,random_state=99).fit(tz,np.arange(12)%2)
+    probe={"X":tx[:2],"aux":ta[:2],"margin":tm[:2]}
+    result=rbf_logits((norm,pca,scaler,clf),probe)
+    assert result.shape==(2,) and np.isfinite(result).all()
+    print("Inference feature contract + real RBF scoring PASS",flush=True)
+
+def run(root,out,train_n=0,val_n=0):
     out.mkdir(parents=True,exist_ok=True)
     train=[v for v in data(root,"train",0) if len(v[1])]
     val=data(root,"val",0)
+    if train_n:train=train[:train_n]
+    if val_n:val=val[:val_n]
     print("E42 FULL TRAIN",len(train),"VAL",len(val),flush=True)
     stage1,stage1diag=first_pass(train,out)
     core,aug,counts=samples(train,stage1,out)
@@ -219,6 +240,8 @@ def run(root,out):
     model_aug=(norm,pca,scaler,augmented_svm)
     del core_z,aug_z,y0,ya
     gc.collect()
+    joblib.dump(dict(stage1=stage1,global_model=model0,augmented_model=model_aug),out/"trained_models.joblib",compress=3)
+    print("E42 CHECKPOINT SAVED",flush=True)
     results,proposals=eval_val(val,stage1,model0,model_aug,out)
     report=dict(status="COMPLETE",train_images=len(train),val_images=len(val),
       validation_GT=sum(len(gt) for _,gt in val),
@@ -235,7 +258,9 @@ if __name__=="__main__":
     ap=argparse.ArgumentParser();ap.add_argument("--dataset",type=Path)
     ap.add_argument("--output",type=Path,default=Path("e42_results"))
     ap.add_argument("--self-test",action="store_true")
+    ap.add_argument("--train-n",type=int,default=0)
+    ap.add_argument("--val-n",type=int,default=0)
     a=ap.parse_args();tests()
     if not a.self_test:
         if a.dataset is None:ap.error("--dataset required")
-        run(a.dataset,a.output)
+        run(a.dataset,a.output,a.train_n,a.val_n)
