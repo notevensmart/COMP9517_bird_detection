@@ -9,11 +9,13 @@ from pathlib import Path
 import numpy as np, cv2
 from cloud_audit import data, iou, nms
 from quality_subset_train import training_subset
-from selective_search_detection import prepare, fit_models, coverage
+from selective_search_detection import prepare, fit_models, coverage, selective_boxes
 from nonlinear_appearance_study import rbf_logits
 from e32_failure_driven import fit_refiner, regression_features, apply_refiner, per_image_stats, draw_audit
 from e34_stage2_lgbm import fit_lgb, lgb_logits
-from e35_bounded_small_hybrid import prepare_hybrid
+from e35_bounded_small_hybrid import prepare_hybrid,small_supplement
+from rebuild_detector import descriptor
+from background_rejector import secondary_features
 from metrics_map import evaluate_map50
 
 VARIANTS=("baseline_035","relaxed_060","refine_035","refine_060","lightgbm_stage2","bounded_small_hybrid")
@@ -32,6 +34,18 @@ def score_one(rec,base,rbf,variant,regressor=None,lightgbm=None):
     keep=nms(b,score,iou_limit=nms_iou,max_det=300)
     return b[keep],score[keep]
 
+def inference_record(path,variant):
+    """Build the entire inference tensor from PIXELS only; no label access."""
+    image=cv2.imread(str(path))
+    if image is None:raise ValueError("Unreadable image: "+str(path))
+    boxes=(small_supplement(image) if variant=="bounded_small_hybrid"
+           else selective_boxes(image,1200))
+    X=(np.stack([descriptor(image,b) for b in boxes]) if len(boxes)
+       else np.empty((0,1924),np.float32))
+    aux=(np.stack([secondary_features(image,b) for b in boxes]) if len(boxes)
+         else np.empty((0,32),np.float32))
+    return dict(path=path,boxes=boxes,X=X,aux=aux)
+
 def eval_split(samples,base,rbf,variant,regressor,out,split,lightgbm=None):
     out.mkdir(parents=True,exist_ok=True)
     preds=[];rows=[];begin=time.perf_counter()
@@ -40,11 +54,13 @@ def eval_split(samples,base,rbf,variant,regressor,out,split,lightgbm=None):
            "beach_bird_1606.jpg"}
     for i,(path,gt) in enumerate(samples,1):
         tic=time.perf_counter()
-        # GT only for post-hoc audit; proposals/feature model do not use labels.
-        rec=(prepare_hybrid([(path,gt)],split)[0] if variant=="bounded_small_hybrid"
-             else prepare([(path,gt)],"selective",split)[0])
+        rec=inference_record(path,variant)
         b,s=score_one(rec,base,rbf,variant,regressor,lightgbm)
-        duration=time.perf_counter()-tic
+        duration=time.perf_counter()-tic  # GT-blind inference only
+        # Official ground truth is first consulted AFTER all detections are fixed.
+        rec["gt"]=gt
+        overlaps=iou(rec["boxes"],gt)
+        rec["coverage"]=overlaps.max(axis=0) if len(rec["boxes"]) else np.zeros(len(gt))
         preds.append((b,s,gt))
         row=dict(image=path.name,method=variant,GT=len(gt),proposals=len(rec["boxes"]),
            predictions=len(b),inference_seconds=duration,
@@ -148,9 +164,9 @@ def run(dataset,out,train_n,candidate,confirm_n):
     picks={x[0].name:x for x in test if x[0].name in toshow}
     for name in toshow:
         path,gt=picks[name]
-        rec=(prepare_hybrid([(path,gt)],"TEST VISUAL")[0] if select=="bounded_small_hybrid"
-             else prepare([(path,gt)],"selective","TEST VISUAL")[0])
+        rec=inference_record(path,select)
         b,s=score_one(rec,base,rbf,select,refiner,lightgbm)
+        rec["gt"]=gt  # Post-hoc visual evaluation only
         draw_audit(rec,(b,s),select,visual)
     record=dict(status="COMPLETED_FULL_240_IMAGE_TEST",frozen_model=select,
        training_images=len(train),test_images=len(test),test_GT=metrics["GT"],
