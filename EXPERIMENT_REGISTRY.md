@@ -312,3 +312,19 @@ Compared with E17's old proposals and the same 100/30 images (**11.76% mAP50 NMS
 The NMS.65 ablation improves over NMS.35 under matched conditions (e.g. round1 +1.70 percentage points). But the 90.38% proposal recall **does not translate into high end-to-end mAP**: score ranking/background discrimination and huge numbers of wrongly scored boxes remain the primary issue. Hybrid visual [run artifact](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43798829411/artifacts/14196090985) includes actual validation photographs with many overlapping red false positives around rocks, seaweed, drones and legitimate birds; this visual QA supports the quantitative FP findings.
 
 **Decision:** don't equate candidate recall with detection performance; no more unrestrained candidate-union expansion. The right next experiment is to improve score discrimination on real-image hard backgrounds (possibly nonlinear classical classifiers and HOG+colour/shape features), while controlling high-confidence false alarms. All model variants remain classical; no neural pretrained models were used.
+
+
+### E21 — Repaired training-positive and mining ablation with NMS tuning
+
+**Verified run:** [GitHub Actions 43800040330](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43800040330), artifact [classical-repair-visual-audit](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43800040330/artifacts/14196272268). 100 TRAIN images (the current manually flagged empty-label IDs were **not selected**; log `TRAIN QA QUARANTINED []`), SAME 30 VAL images and 156 VAL birds for every arm; unchanged LoG+Otsu proposals, HOG+spatial LBP and LinearSVC C=.01. The proposed/positive baseline and GT jitter variants differ by supervised positive crop construction; all training-only. Official primary metric COCO 101-point bird bbox mAP50 maxDets100; NMS IoU .35 and .65 are *explicit validation ablations*, not test metrics.
+
+| Experiment | Mining rounds | VAL mAP50 @NMS.35 | VAL mAP50 @NMS.65 | FP margin0 @NMS.35 | Missed birds margin0 @NMS.35 |
+|---|---:|---:|---:|---:|---:|
+| A Proposal-positive SVM baseline | 0 | 8.02% | 8.15% | 1,999 | 78 |
+| B GT+jitter-positive SVM | 0 | 9.53% | 9.86% | 2,072 | 74 |
+| C GT+jitter + actual TRAIN full-image hard negatives | 1 | 7.09% | 8.42% | 1,732 | 90 |
+| **C GT+jitter + actual TRAIN full-image hard negatives** | **2** | **11.76%** | **12.65%** | **1,196** | 83 |
+
+**Findings:** GT positives improve mAP over proposal-only positives (+1.51pp NMS.35). More realistic full-image false alarm mining is nonmonotone: one round hurts, two rounds help. Less aggressive NMS .65 improves the best model to **12.65%** on 30 VAL images. Do not compare this directly to E15's 60 VAL-image result as they use different validation sets. Visual inspection of [contact sheet](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43800040330/artifacts/14196272268) finds continuing many red FP on shore/wave/seaweed/oversized bird windows, so model remains unreliable. Improvements are genuine but fall far below 50%. The annotation contamination risk found in E18 is **not the explanation for this particular 100-TRAIN result**, because no quarantined file was selected by the fixed-seed train sampling.
+
+**Reproducible fixes:** `src/cloud_audit.py` now clips subpixel YOLO-boundary roundoff before accepting GT XYXY, with synthetic edge tests; `src/label_quality.py` stores manual QA training quarantine IDs; `src/rebuild_detector.py`, `src/hybrid_detector_eval.py`, and `src/repair_and_visual_audit.py` apply training-only quarantine and log affected filenames. All VAL/TST official annotations stay untouched.
