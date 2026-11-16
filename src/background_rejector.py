@@ -150,7 +150,7 @@ def evaluate_variant(valbank,stage1,stage2,alpha,out):
                     np.vstack([np.hstack(panels[i:i+2]) for i in range(0,len(panels),2)]))
     return result,rows
 
-def run(root,out,train_n,val_n):
+def run(root,out,train_n,val_n,confirm=False):
     out.mkdir(parents=True,exist_ok=True)
     train=training_subset(root,train_n);val=data(root,"val",val_n)
     trainbank=build_bank(train,"TRAIN",out);valbank=build_bank(val,"VAL",out)
@@ -165,8 +165,9 @@ def run(root,out,train_n,val_n):
     allbank=prepare_secondary_banks(trainbank+valbank,base)
     trainbank=allbank[:len(trainbank)];valbank=allbank[len(trainbank):]
     secondary,diagnostics=stage2_train(trainbank)
-    configs=[("A_base",None,0),("B_cascade25",secondary,.25),
-             ("C_cascade50",secondary,.50),("D_cascade75",secondary,.75)]
+    configs=([("A_base",None,0),("C_cascade50",secondary,.50)] if confirm else
+             [("A_base",None,0),("B_cascade25",secondary,.25),
+              ("C_cascade50",secondary,.50),("D_cascade75",secondary,.75)])
     allresults=[];allrows=[]
     for name,model,weight in configs:
         metric,rows=evaluate_variant(valbank,base,model,weight,out/"visual"/name)
@@ -185,7 +186,7 @@ def run(root,out,train_n,val_n):
         common_base="E23 best fixed round 1 on same seeded annotated-only 45 TRAIN and 12 VAL",
         negative_provenance="45 TRAIN images all have annotated birds; strict safe negatives IoU<.1 and containment<.5",
         stage2=diagnostics,all_variants=allresults,winner_exploratory=winner["name"],
-        promising_for_larger_study=promising,
+        promising_for_larger_study=promising,confirm_fixed_blend=confirm,
         caveats=["Alpha is selected on exploratory VAL; full final test must not reuse this VAL for unreported tuning.",
                  "Stage2 sees TRAIN proposal positives, not exact GT positives.",
                  "Only rank-based false alarms in top20 and mAP can establish benefit.",
@@ -207,7 +208,8 @@ if __name__=="__main__":
     p.add_argument("--train-n",type=int,default=45)
     p.add_argument("--val-n",type=int,default=12)
     p.add_argument("--self-test",action="store_true")
+    p.add_argument("--confirm",action="store_true")
     a=p.parse_args();self_test()
     if not a.self_test:
         if not a.dataset:p.error("--dataset required")
-        run(a.dataset,a.output,a.train_n,a.val_n)
+        run(a.dataset,a.output,a.train_n,a.val_n,confirm=a.confirm)
