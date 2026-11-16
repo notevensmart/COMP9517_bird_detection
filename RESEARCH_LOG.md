@@ -119,3 +119,12 @@ LBP helps but remains unsatisfactory. Thresholding, localization, feature separa
 ## Classical-only constraint from the team
 
 Only **classical computer vision and traditional ML** methods are permitted in this workstream. No pretrained neural models, CNNs, SAM, DINO or learned foundation-model visual embeddings. The previously tested OpenCV **EdgeBoxes + structured-edge pretrained model** may incorporate learned (non-neural) structured forests, so describe its training provenance clearly; prefer purely handcrafted edge/texture/morphology/contour methods when strict training-free proposals are required. HOG, LBP, SVM and classical part-based detection remain in scope. Existing experiment results are historical, not approval of neural components in a final model.
+
+
+## Stage I — Diversified hard-negative + hard-positive ablation (16 November 2026)
+
+Measured [GitHub Actions 43792817123](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43792817123), with independent COCO API mAP50 calculation and per-image FP breakdowns in the experiment artifact. Reused one feature bank from 35 TRAIN /12 VAL images (77 validation birds); LoG+Otsu and HOG+LBP were fixed. Four methods shared the same initial random 20 negative proposals/image: global mining; per-image+scale+IoU-balanced negative mining; the latter with low-margin positive training patch reweighting; and an additional bounded 1400-negative cache. Evaluated after rounds 0–3, trained only on train images. 
+
+**Best results (round 3, held-out validation subset):** global **11.73% COCO mAP@.5, 305 FP, 44 FN**; diverse-only **10.83%, 316 FP, 43 FN**; diverse+hard positives **11.64%, 333 FP, 43 FN**; bounded cache **9.82%, 345 FP, 45 FN**. FP/FN counts use final NMS detections at margin≥0, whereas mAP uses all ranked candidate scores capped by COCO maxDets=100. Performance was nonmonotonic: round 1 dropped below initial 7.59% in every variant, before recovering in later rounds. 
+
+**Decision:** global mining remains best on this limited validation sample. A third mining round improves on the previously tested two-round global result (8.82%), but neither candidate diversity, hard-positive weights, nor bounded-cache selection outperformed the global strategy. Keep the failed ablations in the report, and avoid overfitting to a 12-image development split. Plan larger split and localisation-focused diagnostics before final test evaluation. More mining may have diminishing returns, and none of the models currently meets 50% mAP.
