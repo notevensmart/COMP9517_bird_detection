@@ -1,0 +1,49 @@
+name: E37 Deterministic Classical Proposal Validation (TRAIN+VAL Only)
+on:
+  push:
+    branches:
+      - 'research/deterministic-selective-proposals'
+  workflow_dispatch:
+jobs:
+  repeatability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install same classical CV dependencies as E36
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'opencv-contrib-python-headless>=4.9,<5' 'pycocotools>=2.0.8,<3'
+      - name: Run deterministic cap and metric checks
+        run: |
+          python src/selective_search_detection.py --self-test
+          python src/e36_reproducibility.py --self-test
+          python src/metrics_map.py
+      - name: Download Kaggle dataset without inspecting TEST
+        run: |
+          python - <<'PY'
+          import kagglehub
+          from pathlib import Path
+          p=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          m=[x.parent.parent for x in p.rglob('images/train')
+             if x.is_dir() and (x.parent.parent/'labels/train').is_dir()
+             and (x.parent.parent/'images/val').is_dir()]
+          if (p/'images/train').is_dir():m.append(p)
+          m=list(dict.fromkeys(m))
+          assert len(m)==1,m
+          Path('dataset_root.txt').write_text(str(m[0]))
+          PY
+      - name: Assert interleaved capped proposals are bit-for-bit equal
+        run: python -u src/e36_reproducibility.py --dataset "$(cat dataset_root.txt)" --output e37_proposal_repeatability
+      - name: Keep full checksum and fitted-score proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e37-proposal-repeatability
+          path: e37_proposal_repeatability/
+          retention-days: 14
+          if-no-files-found: warn
