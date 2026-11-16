@@ -83,8 +83,8 @@ def collect_calibration(cal,models,base):
             order=neg[np.argsort(-scores[neg],kind="stable")]
             hard=order[:min(45,len(order))]
             others=order[len(hard):]
-            extra=rng.choice(others,min(25,len(others)),replace=False) if len(others) else []
-            for index,label in [(pos,1),(np.r_[hard,extra],0)]:
+            extra=rng.choice(others,min(25,len(others)),replace=False) if len(others) else np.empty(0,dtype=np.int64)
+            for index,label in [(pos,1),(np.r_[hard,extra].astype(np.int64),0)]:
                 if len(index):
                     xs[name].extend(scores[index].tolist())
                     ys[name].extend([label]*len(index))
