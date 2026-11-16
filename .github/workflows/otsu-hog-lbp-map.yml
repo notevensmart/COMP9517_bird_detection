@@ -1,0 +1,49 @@
+name: Classical Otsu HOG LBP mAP50
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/otsu_hog_lbp_map.py'
+      - 'src/metrics_map.py'
+      - '.github/workflows/otsu-hog-lbp-map.yml'
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install traditional computer vision and official COCO evaluator
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'pycocotools>=2.0.8,<3'
+      - name: Unit test COCO mAP and handcrafted descriptors
+        run: |
+          python src/metrics_map.py
+          python src/otsu_hog_lbp_map.py --self-test
+      - name: Download public Beach Bird dataset
+        run: |
+          python - <<'PY'
+          import kagglehub
+          from pathlib import Path
+          root=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          candidates=[p.parent.parent for p in root.rglob('images/train') if (p.parent.parent/'labels/train').is_dir() and (p.parent.parent/'images/val').is_dir()]
+          if (root/'images/train').is_dir():candidates.append(root)
+          candidates=list(dict.fromkeys(candidates))
+          assert len(candidates)==1,candidates
+          Path('dataset_root.txt').write_text(str(candidates[0]))
+          PY
+      - name: Controlled HOG HOG-LBP and hard-negative mining validation mAP
+        run: python src/otsu_hog_lbp_map.py --dataset "$(cat dataset_root.txt)" --output ablation_results --train-limit 35 --val-limit 12
+      - name: Archive paper metrics and incorrect-box breakdowns
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: classical-otsu-hog-lbp-map50
+          path: ablation_results/
+          retention-days: 14
+          if-no-files-found: warn
