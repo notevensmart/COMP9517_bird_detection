@@ -208,3 +208,32 @@ Initial [failed audit](https://github.com/notevensmart/COMP9517_bird_detection/a
 **Visual QA:** selected crowded, empty and sparse scenes receive four-panel JPEGs: GT (green), pixel-only proposals (blue), legacy detections (green where IoU>=.5, red otherwise), repaired detections (same colours), with detection margins printed on top-ranked boxes. These visual labels are diagnostic and never used to train models. Files archived under `repair_results/visuals/` plus `repaired_detector_results.json` and `repaired_detector_per_image.csv`.
 
 **Scientific limitations:** test split untouched; paired 30-image validation only, not E15's 60-image dataset; results must NOT be conflated with E15. The visual green/rule uses 'overlaps some GT at >=0.5', not one-to-one matching (duplicate boxes may appear green). Inspect against FP taxonomy as well. At registration cloud run in progress, no metrics available.
+
+### E17 numerical and visual audit results (measured; artifact saved despite workflow push failure)
+
+[GitHub Actions run 43797610003](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43797610003) completed its entire data preparation, training, validation and JPEG visual export. **GitHub job conclusion=FAILURE only because the optional git push of visual JSON was non-fast-forward** (research registry commits had advanced main); all metrics and visual outputs were successfully uploaded as [artifact 14194939019](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43797610003/artifacts/14194939019) and independently inspected. This is not a failed model experiment. Source code has reproducible tests for GT boundary clipping, >0.55 jitter IoU, safe negative selection and COCO AP synthetic cases.
+
+Matched comparison on **100 TRAIN images; 30 VAL images, 156 birds**; GT-blind LoG+Otsu proposals (~960/image), HOG+LBP + LinearSVC, same seed and feature extraction, COCO 101-point bbox mAP@0.5 maxDets100:
+
+| Method | Real validation mAP50 | Final FP @ margin0 | Missed GT @ margin0 | mAP50 if NMS raised to 0.65 (exploratory) |
+|---|---:|---:|---:|---:|
+| A: candidate-only positive crops + background SVM | 8.03% | 1,999 | 78 | 8.15% |
+| B: TRAIN GT crops + valid jitter positives | 9.54% | 2,072 | 74 | 9.87% |
+| C: B plus full-image post-NMS hard-negative mining, round1 | 7.09% | 1,732 | 90 | 8.42% |
+| **C, round2** | **11.76%** | **1,196** | **83** | **12.65%** |
+
+**Actual image inspection on six validation scenes reveals major errors:** 
+- `beach_bird_1399.jpg`: image contains a very large pale swan covering hundreds of pixels; its two GT bird objects are missed (2 FN, 0 TP), while 30 small red false-detection boxes fire on bird parts and textures. The LoG proposals use sigma<=18 with max factor 2.4 and ratio<=1.5, so the largest generated region is roughly <=106 pixels wide. A full swan cannot be covered by this proposal generator at IoU .5. This is a structural scale-coverage defect and cannot be solved by hard-negative mining.
+- `beach_bird_1560.jpg`: 7 GT birds, 71 post-NMS margin0 detections; 3 TP, 68 FP, 4 FN. Many redundant red rectangles on birds and brown beach features, indicating ranking and possible incomplete annotations.
+- `beach_bird_1435.jpg`: GT=0 yet 48 final detections; visual image *appears* to contain shorebirds. **Potential annotation completeness issue: require manual validation of source labels**, and do not silently relabel official test images.
+- `beach_bird_1379.jpg`: GT=0 and numerous red boxes on washed-up dark seaweed, revealing texture confusions.
+
+These visuals are actual JPEGs archived in the artifact. **Legend:** blue boxes = TP final predictions, red = final FP, green = matched GT, yellow = missed GT. The contact sheet proves the method continues to overdetect background objects and incorrectly localise large birds; a 99%-accurate training patch SVM is not sufficient evidence for a working detector.
+
+**Decision:** The *next highest priority* is multi-scale localisation rescue for medium/large birds, not a further hard-negative mining round. Explore classical edge-ranked large-window anchors combined with LoG/Otsu small-object proposals; report recall by bird scale before any retraining, then confirm true mAP gain. Annotation integrity must be manually reviewed for suspicious GT=0 scenes. The 11.76% is exploratory 30-image VAL, not full validation or TEST mAP.
+
+## E18 — Test fixed classical medium/large candidate generator (registered)
+
+**Hypothesis:** The maximum LoG+Otsu width is too small for many medium/large bird GT boxes. Supplement existing small-scale proposals with deterministic image-only edge-ranked large anchors of sizes 96,144,192,256,384,512 pixels and aspect ratios 0.45,0.7,1,1.5,2.2, selected using per-shape spatial balance (50 candidates/shape maximum). Report LoG-only, large-only and hybrid-union candidate recall@.5/.75, split into small (<1024 px²), medium (1024–9999 px²) and large (>=10000 px²) GT objects, candidate count/image, and example overlays. All method proposals are GT-blind and all methods evaluate the exact same fixed 30 VAL images.
+
+**Source:** `src/multiscale_coverage.py`, `.github/workflows/multiscale-coverage.yml`; run to be recorded after completion. Proposal recall is not detection mAP; subsequent SVM training must be measured separately.
