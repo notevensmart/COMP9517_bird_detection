@@ -82,6 +82,12 @@ def main(root,out):
             singlethread_seeded_order_same=np.array_equal(one_thread1,one_thread2),
             after_synthetic=digest(third),first_count=len(first),same_after_repeat=np.array_equal(first,second),
             same_after_synthetic=np.array_equal(first,third)))
+    # E37 hard gate: the capped proposal array must remain identical across
+    # identical calls and after unrelated images have been processed.
+    if not all(p["same_after_repeat"] and p["same_after_synthetic"]
+               for p in proposal_hashes):
+        raise AssertionError("Capped Selective Search remains nondeterministic")
+    print("E37 CAP REPEATABILITY PASSED",flush=True)
     train=training_subset(root,10)
     bank=prepare(train,"selective","TRAIN")
     vbank=prepare(subset,"selective","VAL")
