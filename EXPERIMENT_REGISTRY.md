@@ -182,3 +182,16 @@ Initial [failed audit](https://github.com/notevensmart/COMP9517_bird_detection/a
 **Implications:** mAP formula itself is not the central failure. The likely bottleneck is poor *relative classification score ranking* on candidate crops amid ~957 candidates/image, coupled with missing candidates for 28% of birds and insufficient overlap at IoU .75 (only 17.29%). More hard-negative mining cannot repair localisation or crop-shift alone. Systematically test training from GT positives with jittered realistic positive crops, training against mined *post-NMS* false alarms, and score distribution / precision-recall diagnostics, before declaring classical methods intrinsically weak. NMS=.65 is a testable, small secondary gain. Negative-mining diversity and letterboxing alone did not deliver evidence of a major fix.
 
 **Artifacts:** [run output with JSON diagnostics and visual overlays](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43795691581/artifacts/14193588457). Green=GT bird boxes, blue=candidate boxes with IoU≥.5. The oracle method is evaluation/diagnostic only and MUST NOT be included among deployed model scores in the paper.
+
+
+## E17 — Full classical integration repair with visual diagnosis (registered before results)
+
+**Research hypothesis:** The severe loss between ~71% ground-truth-assisted proposal oracle mAP and ~11% real detector mAP arises partly from poorly aligned proposal-positive training and weak full-image hard negative examples. Fix GT-border crop clipping, use **true TRAIN GT boxes with IoU>=.55 jitter**, and mine false alarms from full TRAIN images after NMS. All methods must use identical LoG+local-Otsu candidates, HOG+LBP, linear SVM, fixed VAL set and official COCO 101-point mAP@.5.
+
+**Method and preplanned arms:** A historical-style baseline trained on positive candidate regions (IoU>=.5); B GT+jitter positive crops; C GT+jitter with **two rounds of TRAIN full-image post-NMS hard negatives** (up to 600 new sampled/image-diverse safe negatives each round). All use same initial TRAIN safe negatives; features are 64x64 gray HOG+uniform-LBP; no neural methods. Primary NMS IoU=.35 plus separate NMS=.65 ablation. Initial quick gate: 100 TRAIN /30 VAL seeded images, no TEST.
+
+**Primary metric:** official COCO single-class bbox mAP@IoU=.50, 101 recall points, maxDets=100. Secondary: background/localisation/duplicate FP and FN on VAL at fixed decision margin 0, empty-image false alarms and inference/runtime. Visual evidence: overlays of *blue TP predicted boxes, red FP predicted boxes, green matched GT and yellow missed GT*; GT+proposal overlays; generated real JPEGs as workflow artifact and compact contact-sheet embed file committed for remote review. No VAL GT enters train fitting. The visual selection uses errors solely to choose informative images AFTER evaluation and never for training.
+
+**Source:** `src/rebuild_detector.py`, `.github/workflows/classical-repair.yml`. [Github Actions experiment](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/43796575319).
+
+**Status when registered:** experiment queued. Do not publish any success or mAP improvement unless measured from completed logs. Compare A/B/C within E17; E15's 1,369-image result is not a matched score because E17 uses 100 TRAIN and 30 VAL.
