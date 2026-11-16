@@ -1,0 +1,48 @@
+name: E35 Bounded Small-Bird Proposal Supplement
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/e35_bounded_small_hybrid.py'
+      - '.github/workflows/e35-bounded-small.yml'
+  workflow_dispatch:
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install classical tools
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'opencv-contrib-python-headless>=4.9,<5' 'pycocotools>=2.0.8,<3'
+      - name: Proposal and metric self tests
+        run: |
+          python src/e35_bounded_small_hybrid.py --self-test
+          python src/metrics_map.py
+      - name: Download public Kaggle dataset
+        run: |
+          python - <<'PY'
+          import kagglehub
+          from pathlib import Path
+          p=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          m=[x.parent.parent for x in p.rglob('images/train') if (x.parent.parent/'labels/train').is_dir() and (x.parent.parent/'images/val').is_dir()]
+          if (p/'images/train').is_dir():m.append(p)
+          m=list(dict.fromkeys(m))
+          assert len(m)==1,m
+          Path('dataset_root.txt').write_text(str(m[0]))
+          PY
+      - name: Same 100 TRAIN and 60 VAL SS versus bounded-small hybrid
+        run: python -u src/e35_bounded_small_hybrid.py --dataset "$(cat dataset_root.txt)" --output e35_results --train-n 100 --val-n 60
+      - name: Archive actual detections and controlled AP
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e35-bounded-small-hybrid-results
+          path: e35_results/
+          retention-days: 14
+          if-no-files-found: warn
