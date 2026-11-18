@@ -28,3 +28,18 @@ Branch: `research/e44-nms-audited-repair` (forked from `research/e42-full-rbf-au
 
 ## Follow-up
 After workflow reports: inspect error logs if failed; inspect JSON/CSV and overlays if successful; enforce hard035 baseline reproduction. Compare mAP/TP by crowding and size using official VAL only. Report measured differences, including negative results. Do not run TEST or retrain E42 merely to change NMS.
+
+
+## E42/E43 artifact-level failure analysis (actual per-image CSV; full 291 VAL)
+CSV rows: E42 582 (2 variants ×291), E43 1455 (5 variants ×291). Same official GT 1843, including 33 zero-annotation VAL images. E42 augmented vs unaugmented top-20, stratified by number of GT birds/image:
+| GT/image | GT total | Augmented TP20 | Unaugmented TP20 | Difference |
+|---|---:|---:|---:|---:|
+| 0 | 0 | 0 | 0 | 0 (660 official FPs in each model: 33×20) |
+| 1–4 | 301 | 228 | 233 | -5 |
+| 5–19 | 823 | 440 | 436 | +4 |
+| 20+ | 719 | 141 | 151 | -10 |
+The augmented model gains +4 in mid-density scenes but loses 10 in dense scenes; note this is *top20 absolute detection counts* and NOT per-stratum AP. In crowded 20+ images, top20 TP coverage is 141/719=19.6%; it is structurally capped at 20 detections per photo. Restrict inference to this observed operating-point metric.
+
+E43 global TP20 in crowded 20+ =150, specialist-only =147, 50% blend =145. The 50% blend improved overall top20 TP (837 vs global 818) via other density groups, but lowered AP and did not improve dense-scene TP20. This does not support promoting specialists.
+
+A key per-image diagnostic remains to be done with full prediction scores/ground-truth: the archives contain summary CSV and only eight JPEG overlays, not all ranked scored boxes. Do NOT infer exact AP contributions by individual image, NMS suppression counts, or high-score FP causes from these artifacts alone. The repair branch's E44 outputs should provide subsequent paired comparison.
