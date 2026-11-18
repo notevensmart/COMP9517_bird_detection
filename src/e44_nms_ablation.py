@@ -8,9 +8,9 @@ from nonlinear_appearance_study import rbf_logits
 from metrics_map import evaluate_map50
 from rebuild_detector import draw_box
 
-def soft_nms(boxes,scores,method,sigma=.5,threshold=.35,limit=300,min_score=-1e9):
+def soft_nms(boxes,scores,method,sigma=.5,threshold=.35,limit=300,min_score=0.00001):
     # Operates on copies. Decay in the original score domain; Gaussian always decays.
-    scores=np.asarray(scores,dtype=float).copy()
+    scores=1/(1+np.exp(-np.clip(np.asarray(scores,dtype=float),-60,60)))
     remaining=np.arange(len(scores))
     kept=[]
     while len(remaining) and len(kept)<limit:
