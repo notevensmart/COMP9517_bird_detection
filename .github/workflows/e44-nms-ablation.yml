@@ -1,5 +1,11 @@
 name: E44 Frozen E42 NMS Ablation and Failure Audit
 on:
+  push:
+    branches:
+      - research/e42-full-rbf-augmentation
+    paths:
+      - .github/workflows/e44-nms-ablation.yml
+      - src/e44_nms_ablation.py
   workflow_dispatch:
 permissions:
   actions: read
