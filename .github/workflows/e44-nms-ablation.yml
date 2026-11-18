@@ -1,19 +1,18 @@
 name: E44 Frozen E42 NMS Ablation and Failure Audit
 on:
+  workflow_dispatch:
   push:
     branches:
-      - research/e42-full-rbf-augmentation
+      - research/e44-nms-audited-repair
     paths:
       - .github/workflows/e44-nms-ablation.yml
-      - src/e44_nms_ablation.py
-  workflow_dispatch:
 permissions:
   actions: read
   contents: read
 jobs:
   evaluate:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 120
     env:
       OPENBLAS_NUM_THREADS: '2'
       OMP_NUM_THREADS: '2'
@@ -26,21 +25,29 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
-      - name: Install classical CV dependencies
-        run: pip install numpy scipy scikit-learn joblib pandas matplotlib pillow kagglehub 'opencv-contrib-python-headless>=4.9,<5' 'pycocotools>=2.0.8,<3'
+      - name: Install classical CV dependencies including scikit-image
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'opencv-contrib-python-headless>=4.9,<5' 'pycocotools>=2.0.8,<3' joblib pillow
+          python -m pip check
+      - name: Unit and API contract tests before expensive VAL evaluation
+        run: |
+          python src/metrics_map.py
+          python src/e42_full_rbf_augmented.py --self-test
+          python src/e44_nms_ablation.py --self-test
       - name: Retrieve frozen E42 model checkpoint
         run: |
           mkdir -p e42_frozen
           gh run download 43974171244 --repo "${{ github.repository }}" --name e42-full-train-rbf-augmentation-results --dir e42_frozen
           test -s e42_frozen/trained_models.joblib
-      - name: Restore proposal cache
+      - name: Restore deterministic proposal cache
         uses: actions/cache@v4
         with:
           path: .cache/bird-proposals
           key: bird-ss-e37-v1-${{ runner.os }}-e44-${{ github.run_id }}
           restore-keys: |
             bird-ss-e37-v1-${{ runner.os }}-
-      - name: Download public TRAIN/VAL dataset, never TEST
+      - name: Download public TRAIN and VAL dataset metadata; never load TEST
         run: |
           python - <<'PY'
           import kagglehub
@@ -53,14 +60,19 @@ jobs:
           assert len(matches)==1,matches
           Path('dataset_root.txt').write_text(str(matches[0]))
           PY
-      - name: Compare NMS variants on full VAL with frozen checkpoint
+      - name: Check real checkpoint and VAL data on two images before full run
+        run: |
+          python -u src/e44_nms_ablation.py --dataset "$(cat dataset_root.txt)" --checkpoint e42_frozen/trained_models.joblib --output e44_smoke --val-limit 2
+      - name: Compare NMS variants on full 291-image VAL with frozen checkpoint
         run: |
           python -u src/e44_nms_ablation.py --dataset "$(cat dataset_root.txt)" --checkpoint e42_frozen/trained_models.joblib --output e44_results
-      - name: Upload NMS results and failure overlays even on error
+      - name: Upload metrics and overlays even on validation failure
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e44-nms-ablation-and-failure-audit
-          path: e44_results/
+          name: e44-nms-audited-results
+          path: |
+            e44_smoke/
+            e44_results/
           if-no-files-found: warn
           retention-days: 14
