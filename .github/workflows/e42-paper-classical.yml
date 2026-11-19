@@ -1,0 +1,52 @@
+name: E42 DPM Fisher ACF Paper-Derived Experiments
+on:
+  push:
+    branches: [research/e42-three-classical-paper-models]
+    paths:
+      - 'src/e42_paper_classical.py'
+      - '.github/workflows/e42-paper-classical.yml'
+  workflow_dispatch:
+jobs:
+  paper-classical:
+    strategy:
+      fail-fast: false
+      matrix:
+        method: [dpm, fisher, acf]
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install consistent classical pipeline and official COCO metrics
+        run: |
+          python -m pip install -r requirements.txt 'pycocotools>=2.0.7,<3'
+          python -m pip uninstall -y opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless
+          python -m pip install 'opencv-contrib-python-headless>=4.8,<5'
+      - name: Synthetic mathematical smoke tests for paper-derived features
+        run: python -u src/e42_paper_classical.py --method "${{ matrix.method }}" --self-test
+      - name: Fetch public Beach Bird Detection data
+        run: |
+          python - <<'PY'
+          import kagglehub
+          from pathlib import Path
+          source=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          matches=[p.parent.parent for p in source.rglob('images/train') if p.is_dir() and (p.parent.parent/'labels/train').is_dir() and (p.parent.parent/'images/val').is_dir()]
+          if source.joinpath('images/train').is_dir():matches.append(source)
+          matches=list(dict.fromkeys(matches))
+          if len(matches)!=1:raise RuntimeError(f"Unexpected dataset roots: {matches}")
+          Path('dataset_root.txt').write_text(str(matches[0]))
+          PY
+      - name: Train on 45 TRAIN, assess on 30 VAL, never touch TEST
+        run: |
+          python -u src/e42_paper_classical.py --method "${{ matrix.method }}" --dataset "$(cat dataset_root.txt)" --output "e42_${{ matrix.method }}" --train-n 45 --val-n 30 --cap 250
+      - name: Upload raw predictions and results even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e42-${{ matrix.method }}-results
+          path: e42_${{ matrix.method }}/
+          retention-days: 14
+          if-no-files-found: warn
