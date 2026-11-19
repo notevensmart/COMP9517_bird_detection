@@ -592,3 +592,10 @@ Most important **architecture implication:** cannot justify one 64×64 distorted
 Three genuinely distinct paper-derived non-neural detectors are studied with shared deterministic TRAIN45/VAL30, GT-blind capped Selective Search, COCO 101-point AP50 maxDets100, top-20 counts, visual error overlays and proposal R50/R75. TEST is not opened. DPM uses HOG root/parts with quadratic deformation and latent SVM optimization; Fisher uses dense SIFT, a TRAIN-fitted Gaussian mixture, first/second order Fisher moments, signed power + L2 normalization and a linear SVM; ACF uses ten aggregated LUV/gradient channels with depth-2 AdaBoost decision trees.
 
 **Fidelity caveat:** These are paper-derived resource-constrained adaptations, **not** certified reproductions of the original DPM multiscale mixtures, exhaustive Fisher settings or ACF fast-channel pyramid/2048 trees. In particular the shared capped Selective Search proposals differ from the papers' native detection scanning protocols. No mAP claim should appear here until the E42 workflow completes and artifacts are verified.
+
+
+### E42 completed measured outcome
+
+All three [E42 GitHub Actions matrix jobs](https://github.com/notevensmart/COMP9517_bird_detection/actions/runs/44493145567) finished successfully. On matched TRAIN45/VAL30/156 GT, fixed order-stable capped 250 Selective Search candidates/image, COCO bbox AP50: **DPM-style 5.2482%**, **Fisher Vector + SVM 4.0242%**, **ACF + boosted trees 8.5731%**; top20 one-to-one TPs across 30 images: **48**, **35**, **58** respectively. Proposal R50 **64.10%**, R75 **19.23%**; small-bird proposal R50 **39.13%**. Results are **VAL-only** and not equivalent to original authors' full algorithms.
+
+Real visual overlays were inspected; see [E42_RESULTS_AUDIT.md](E42_RESULTS_AUDIT.md) for detailed matched comparisons, qualitative failure taxonomy, paper fidelity boundaries, and a DPM negative-count metadata erratum. See [E42_PAPER_REFERENCES.md](E42_PAPER_REFERENCES.md) for the three original peer-reviewed papers.
