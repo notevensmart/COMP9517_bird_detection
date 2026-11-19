@@ -1,0 +1,48 @@
+name: E40 Paper-faithful HOG CS-LBP Validation
+on:
+  push:
+    branches: [research/e40-paper-cslbp-verified]
+    paths:
+      - 'src/e40_paper_cslbp.py'
+      - '.github/workflows/e40-paper-cslbp.yml'
+  workflow_dispatch:
+jobs:
+  e40:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install reproducible classical image processing dependencies
+        run: |
+          python -m pip install -r requirements.txt 'pycocotools>=2.0.7,<3'
+          python -m pip uninstall -y opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless
+          python -m pip install 'opencv-contrib-python-headless>=4.8,<5'
+      - name: Verify descriptor mathematics and COCO scoring
+        run: python -u src/e40_paper_cslbp.py --self-test
+      - name: Download original public Kaggle Beach Bird dataset
+        run: |
+          python - <<'PY'
+          import kagglehub
+          from pathlib import Path
+          source=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          matches=[p.parent.parent for p in source.rglob('images/train') if p.is_dir() and (p.parent.parent/'labels/train').is_dir() and (p.parent.parent/'images/val').is_dir()]
+          if source.joinpath('images/train').is_dir():matches.append(source)
+          matches=list(dict.fromkeys(matches))
+          if len(matches)!=1:raise RuntimeError(f"Unexpected roots: {matches}")
+          Path('dataset_root.txt').write_text(str(matches[0]))
+          PY
+      - name: Compare paired paper-derived HOG and HOG CS-LBP on TRAIN/VAL
+        run: |
+          python -u src/e40_paper_cslbp.py --dataset "$(cat dataset_root.txt)" --output e40_results --train-n 45 --val-n 30 --cap 900
+      - name: Archive full results and real visual outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e40-paper-math-verified-results
+          path: e40_results/
+          retention-days: 14
+          if-no-files-found: warn
