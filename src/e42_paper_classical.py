@@ -224,7 +224,7 @@ def train_acf(pos,neg):
     y=np.r_[np.ones(len(pos)),np.zeros(len(neg))]
     clf=AdaBoostClassifier(estimator=DecisionTreeClassifier(max_depth=2,
               min_samples_leaf=5,random_state=SEED),n_estimators=160,
-              learning_rate=.6,algorithm="SAMME",random_state=SEED)
+              learning_rate=.6,random_state=SEED)
     clf.fit(X,y)
     return clf,dict(n_estimators=len(clf.estimators_),feature_dimension=X.shape[1],
                     tree_depth=2,train_accuracy=float(np.mean(clf.predict(X)==y)))
