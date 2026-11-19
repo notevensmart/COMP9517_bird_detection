@@ -89,7 +89,7 @@ def score_frozen(weights,dataset,out,method,cap=1200,nms_iou=.35):
          model_source="Saved E43 model artifact, downloaded by actions/download-artifact",
          model_sha256_before=before,model_sha256_after=after,
          refit=False,changed_parameters=False,
-         test_images=len(samples),gt_count=sum(len(gt) for _,gt in samples),
+         test_images=len(samples),
          test_ids=[path.name for path,_ in samples],
          proposal="Frozen E43 deterministic unique-then-stratified Selective Search",cap=cap,
          nms_iou=nms_iou,mean_proposals=total_proposals/len(samples),
