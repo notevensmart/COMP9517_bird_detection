@@ -1,0 +1,48 @@
+name: E39 Paper-inspired HOG CS-LBP Validation
+on:
+  push:
+    branches:
+      - research/e39-hog-cslbp
+    paths:
+      - 'src/e39_hog_cslbp.py'
+      - '.github/workflows/e39-hog-cslbp.yml'
+  workflow_dispatch:
+jobs:
+  e39:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install compatible classical CV libraries
+        run: |
+          python -m pip install -r requirements.txt 'pycocotools>=2.0.7,<3'
+          python -m pip uninstall -y opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless
+          python -m pip install 'opencv-contrib-python-headless>=4.8,<5'
+      - name: Synthetic feature, deterministic proposal and COCO metric tests
+        run: python src/e39_hog_cslbp.py --self-test
+      - name: Download public Beach Bird Detection data
+        run: |
+          python - <<'PY'
+          import kagglehub
+          from pathlib import Path
+          source=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          matches=[p.parent.parent for p in source.rglob('images/train') if p.is_dir() and (p.parent.parent/'labels/train').is_dir() and (p.parent.parent/'images/val').is_dir()]
+          if source.joinpath('images/train').is_dir():matches.append(source)
+          matches=list(dict.fromkeys(matches))
+          if len(matches)!=1:raise RuntimeError(f"Unexpected dataset roots: {matches}")
+          Path('dataset_root.txt').write_text(str(matches[0]))
+          PY
+      - name: Train two paired classical detectors and measure official VAL AP50
+        run: python -u src/e39_hog_cslbp.py --dataset "$(cat dataset_root.txt)" --output e39_results --train-n 45 --val-n 30 --cap 500
+      - name: Save results and real failure overlays even if partial
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e39-hog-cslbp-validation
+          path: e39_results/
+          retention-days: 14
+          if-no-files-found: warn
