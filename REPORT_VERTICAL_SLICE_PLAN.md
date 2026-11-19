@@ -1,64 +1,41 @@
-# COMP9517 — Classical Bird Detection Research Vertical Slice (Report Plan)
+# COMP9517 — Classical ML Research Slice: Revised Concise Report Plan
 
-Status: agreed outline; **not** a completed report. Owner contribution to be checked against team division of work. Intended integration: IEEE two-column group report, approximately **2–3 pages** out of the **10-page main-text limit** (references excluded). No additional experiment should be claimed completed without verified artifacts.
+**Scope.** One Classical Machine Learning contribution (currently Method 2) within the group's IEEE report, approximately **2–3 pages** of the 10-page main-text limit. The group may implement **up to five methods**; do not assume there are exactly two. This is a research *story*, not a run catalogue.
 
-## Editorial direction
+**Research question.** What fundamentally limits classical bird detection in natural scenes, and how did evidence guide the transition from edge proposals to a two-stage handcrafted-feature detector?
 
-Tell a **focused, evidence-based research story**, not a catalogue of 40+ exploratory runs. Present **five pivotal investigations** chosen for the information they yielded. Narrative arc: **problem → hypothesis → controlled comparison → quantitative and qualitative evidence → interpretation → next design decision**.
+**Writing rule.** For each selected step: **initial problem → tested hypothesis → controlled evidence (numbers + real outputs) → interpretation → next decision**. Refer in paper prose, headings, tables, and captions to “initial experiments”, “subsequent investigations”, or “later evaluations”; keep E-numbers ONLY in internal provenance notes. Do not invent trials, curves, or photos.
 
-Working title: **An Experimental Investigation of Classical Bird Detection: From Region Proposals to Robust Recognition**.
+## The five essential research beats
 
-Central question: *What limits classical bird detection in complex natural scenes, and how do proposal quality, appearance representation, generalization and post-processing interact to affect end-to-end accuracy?*
+1. **Start from the first experiments: missing boxes and impractical candidate counts (internal E01–E08).** On the same 20 VAL images (109 birds), capped Canny gave **7.34% raw proposal recall50**, while dense multiscale anchors gave **93.58%** but required **296,584 candidate boxes**. Tiny 3-image training checks had perfect patch classification yet failed detector overfit gates because proposals missed birds or flooded the classifier. Hard-negative mining reduced positive-margin FPs (298.3→22/image in tiny TRAIN), but global top-k edge pruning removed virtually all birds; spatial/scale quotas were better. **Inference:** proposal recall, candidate cost and ranking must be diagnosed separately. Cover this *once* in a compact introductory results paragraph/figure, not eight subsections.
+2. **Find the useful architecture: localization + features + nonlinear verification (internal E09–E14, E28, E31).** Paired 12-VAL-image / 77-bird LoG+Otsu comparison: HOG+SVM **4.60%**, HOG+LBP **7.59%**, adding two negative-mining rounds **8.82% COCO mAP50**. On a distinct matched 30-VAL-image /156-bird proposal study, LoG+Otsu detector **6.56%**, Selective Search **17.18%**, naive union **11.35%**; raw proposal recall50 **73.08%, 91.03%, 96.15%** respectively. This **counterexample** shows highest proposal recall need not maximize detector AP. A separate paired nonlinear-verifier ablation (45 TRAIN/30 VAL) improved RF stage2 **6.47%** to PCA64 HOG/LBP RBF stage2 **8.60%**, but false positives persisted. These studies have different samplers and are NOT a single training trajectory. State final detector: Selective Search → HOG/LBP + color/context → Linear SVM → PCA64/RBF SVM verification → NMS.
+3. **Show the *real training-size learning curve* as a diagnosis (internal E14–E16).** On fixed **60 VAL images / 376 birds**, increasing nested TRAIN images **35,100,300,700,1369** gave official COCO mAP50 **7.49,6.54,9.78,11.25,11.29%** for the older LoG/Otsu + HOG/LBP + linear SVM/mining pipeline. The 700→1369 gain was only ~0.04 percentage points, evidence of an **architecture-specific** plateau, not an intrinsic limit of all Classical ML. On a different matched 12-VAL-image/77-bird mining study, global top-500 mining across rounds 0–3 yielded **7.59,3.74,8.82,11.73%**; this is nonmonotone. Place training-size curve in the report; mining-round curve is an optional supplementary plot. NEVER make up neural-style epoch/loss curves.
+4. **Test generalization and size-specific complexity (internal E42–E43).** Paired full 291 VAL /1,843 birds augmentation study: **17.43→20.02%** mAP50 with top20 TP **820→809**. Separate paired full-VAL specialist study: global **17.76%**, specialists **17.04%**, blends **16.86% (25%), 16.76% (50%), 16.83% (75%)**; the 50% blend had **837** top20 TP vs **818** for global, yet lower AP. Interpret metric/ranking differences without falsely directly pairing E42 and E43 run baselines.
+5. **Post-processing and unresolved errors (internal E44).** Frozen E42 augmented checkpoint, full VAL: Hard NMS IoU .35 **20.02%**, Hard .50 **19.45%**, linear Soft **20.01%**, Gaussian Soft **20.62%** mAP50. Use real crowded and swan image pairs on the SAME source photograph. Expose small-bird raw proposal recall about **50.5%**; background confusers, loose/part-bird boxes and top-ranked false detections remain. Conclude with evidence-based limitations and recommendations.
 
-No neural networks or pretrained deep learning detectors. All development on TRAIN and VAL; prior frozen E33 TEST evaluation must not be used for further model selection or diagnostics. Include the other group method(s) in the final integrated report, with at least two meaningfully different approaches, and report runtime as required by specification.
+**Reproducibility footnote (not a headline study):** E36–E37 revealed Selective Search return-order instability: retaining first 1,200 changed selected candidate *sets*. Later deterministic capping was developed using TRAIN/VAL. Distinguish it from the older frozen TEST implementation; never tune on TEST.
 
-## Five main investigations
+## Essential visual-reference set (keep only 3–4 figure slots in 2–3 pages)
 
-1. **Region proposal quality — E31 Selective Search vs LoG/Otsu.**
-   Hypothesis: better bird-aligned candidate boxes will improve recall and localization.
-   Show representative proposal overlays, R50/R75 and size-dependent recall, and detection mAP in **paired matching conditions**. Discuss the paradox that an unrestricted union improved candidate recall but worsened detector AP. Avoid comparing small-subset E31 mAP as though it were directly paired with full-VAL E42.
+- **Figure 1 (early-to-better proposals):** small matched proposal recall-versus-budget graphic (Canny vs multiscale), plus *actual* early proposal overlays if recoverable. Clearly label 20 VAL / 109 birds and candidate recall (NOT detector AP).
+- **Figure 2 (architecture decision):** matched 30-image/156-bird LoG/Otsu versus Selective Search versus union comparison; contrast proposal recall and actual detector mAP as distinct measures, ideally alongside real original detector overlays from E31.
+- **Figure 3 (training/model diagnosis):** small training-size vs VAL mAP curve from fixed 60 VAL /376 birds; optional inset comparison of HOG, HOG+LBP, and mining on their independent *matched* 12-image protocol. Never combine mismatched cohorts into one line.
+- **Figure 4 (later interventions and failures):** one compact quantitative ablation table (augmentation, specialist, NMS each in separate matched blocks) and genuine model-output montage: seaweed/background, crowded birds, swan, plus same-scene Hard vs Gaussian NMS. In practice split Fig. 4 if layout permits.
 
-2. **Handcrafted appearance and classification — E31-C / E28 (related evidence, clearly separated).**
-   Question: why do HOG/LBP + classical classifiers confuse seaweed, reeds and bird parts? Show a controlled classifier comparison and real background false-positive overlays. Discuss high training-patch accuracy versus low end-to-end validation mAP **without calling their difference a valid generalization gap**: they measure different tasks. Describe two-stage Linear SVM and PCA + RBF SVM with colour/context features. E31-C and E28 use different experimental settings; report each denominator.
+**Image constraints:** no generative photographic content or fabricated boxes. Any charts must be computed from documented metrics/CSV. Provide JPEG overlays, vector PDF + PNG chart exports, and a provenance/annotation note with each filename, evaluation split, run and color convention. The *existing* `COMP9517_Overleaf_Figures` archive contains later genuine overlays; new reference charts should be added, not used to replace real predictions. Missing early overlays should be marked *not yet recovered*, not silently substituted.
 
-3. **Appearance augmentation — E42.**
-   Compare paired full-VAL no-augmentation 17.43% vs augmentation 20.02% COCO 101-point mAP@IoU .50; top-20 TP 820 vs 809. Include original/augmented examples, mAP-vs-top20 ranking interpretation, analysis by scene density and, if prediction scores are recovered, precision–recall and confidence distributions. Training 1,215 annotated-positive TRAIN images; VAL 291 images / 1,843 annotated birds.
+## Group integration
 
-4. **Scale specialist model ablation — E43.**
-   Global 17.76% vs specialist-only 17.04%; blends 25/50/75%: 16.86%, 16.76%, 16.83% VAL mAP50. Top-20 TP global 818; experts 832; 50% blend 837. Explain ranking/operating-point trade-off: higher top-20 TP did not yield higher global AP. Visualize the mAP / TP trade-off, ideally by object size using recoverable predictions; do not claim improved size-specific AP unless computed.
+- `02_literature_review.tex`: classical proposal generation, HOG/LBP, SVM, NMS citations; other-method authors insert their own review.
+- `03_methods.tex`: concise implemented final classical pipeline (~0.5 page); leave neutral space for any number of other methods.
+- `04_experimental_results.tex`: five research beats (~1–1.25 pages) compressed into connected findings. Distinguish all study denominators.
+- `05_discussion.tex`: errors, trade-offs, reproducibility and recommendations (~0.75 page), plus shared cross-method comparison once others' results are available.
 
-5. **Post-processing and failure audit — E44.**
-   Compare Hard NMS IoU 0.35 and 0.50, linear Soft-NMS and Gaussian Soft-NMS on **frozen E42 augmented checkpoint**, 291-image VAL. Only report verified complete-run results. Check hard035 reproduces 20.01565% E42 baseline (allow only justified numeric tolerance); Soft-NMS scores must have consistent semantics and stable global ranking, with any transformed-score variants labeled appropriately. Include crowded-scene overlays, duplicate-vs-suppressed detections, per-image failures, size/crowd stratification, confidence ranking and localization diagnostics. Never silently replace the earlier baseline.
+## Evidence guardrails
 
-## Reproducibility note (not a sixth headline experiment)
-
-Brief note on **E36–E37**: nondeterministic Selective Search output order, first-1200 cap caused different candidate sets; canonicalization + deterministic selection addressed the specific repeatability issue. Distinguish the newly selected proposal distribution from the original E33 TEST-frozen implementation.
-
-## Visual evidence package (prioritize 3–4 figures in the 2–3 page slice)
-
-- A single **detector evolution schematic**: original classical approach → Selective Search → stage 1 Linear SVM/HOG/LBP → PCA64/RBF SVM + 32D context → NMS.
-- **Paired proposal/mAP trade-off panel** with explicit dataset counts; no unqualified cross-subset trend lines.
-- **E42 vs E43 quantitative ablation**: two-axis plot or separate panels for mAP50 and top-20 TP (metrics defined), plus augmentation image pair.
-- **Actual failure montage** (not synthetic or web images): seaweed/vegetation background confusers, crowded shorebirds, large or part-bird localization, missed proposals; ground truth and prediction legends.
-- Optional appendix/research backup: training-size learning curves, hard-negative mining-round plots, error taxonomy, score histograms, PR curves, size/crowd breakdowns, reproducibility diagnostics.
-
-### Accuracy rules for graphs
-
-SVM fitting is **not epoch-based**, so do not invent epoch accuracy or loss curves. Prefer sample-size learning curves, mining-round performance and inference diagnostics only if earlier run artifacts contain those measurements. Distinguish train-patch accuracy from train detection mAP. Report actual confidence intervals only if computed from predictions. Never fabricate numbers, curves, visualizations or E44 results.
-
-## Draft section allocation for integration
-
-- Methods / design rationale: ~0.5 IEEE page.
-- Selected experimental investigations and compact results: ~1.0 IEEE page.
-- Failure analysis and discussion: ~0.75–1.0 IEEE page.
-- Reserve figure/table footprints; final editor may rebalance.
-
-## Research artifact and evidence handling
-
-Preserve exact split sizes, validation denominators, model/checkpoint version, IoU=.50, COCO 101-point AP with maxDets=100, top-20 one-to-one TP matching and runtime. Link runs and artifacts in internal notes; the report should cite papers/software/dataset properly. Do not enumerate 40+ experiments in the submitted narrative; retain the complete EXperiment Registry and Research Log untouched for audit and honest provenance.
-
-Sources for further drafting: EXPERIMENT_REGISTRY.md, RESEARCH_LOG.md, CLASSIFIER_COMPARISON_REPORT.md, MODEL_CHALLENGE_AUDIT.md, E37_STABLE_PROPOSALS_REPORT.md, E42_RESEARCH_PROTOCOL.md; E42 run 43974171244; E43 run 43974178323; E44 original failed 44421640677 and repaired run 44423104662 (verify final status and outputs before quoting).
-
-## Recommended writing voice
-
-Scientific, analytical and concise. Each investigation should communicate **what we believed, what we measured, why the result was surprising, and how the evidence changed our next decision**. Report negative results without disguising them. The vertical slice should merge cleanly with teammates' Introduction, Literature Review, second method and Conclusion.
+- Primary full detector metric: COCO 101-point single-class **mAP@IoU=.50, maxDets=100**. Separate candidate recall at IoU=.50, ranking-specific top20 TP, and fixed-margin FP/FN.
+- Do not draw smooth continuous curves between studies with different VAL sets, proposal banks, or fitting protocols.
+- SVM training has no neural epochs; show learning curves by TRAIN samples or hard-negative mining *rounds*, or paired model-comparison plots.
+- E01–E15 subset metrics are exploratory, not full-VAL or held-out TEST scores. Keep source links and E IDs in internal ledger only.
+- Full experiment history and exact provenance remain in `EXPERIMENT_REGISTRY.md`, `RESEARCH_LOG.md`, `CLASSIFIER_COMPARISON_REPORT.md`, `MODEL_CHALLENGE_AUDIT.md`, and GitHub Actions artifacts. Preserve original files untouched.
