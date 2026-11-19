@@ -1,0 +1,47 @@
+name: E41 Stable SS and Paper-Stride Geometry Audit
+on:
+  push:
+    branches: [research/e41-ss-cslbp-audit]
+    paths:
+      - 'src/e41_ss_cslbp.py'
+      - '.github/workflows/e41-ss-cslbp.yml'
+  workflow_dispatch:
+jobs:
+  e41:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install classical ML and official metrics
+        run: |
+          python -m pip install -r requirements.txt 'pycocotools>=2.0.7,<3'
+          python -m pip uninstall -y opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless
+          python -m pip install 'opencv-contrib-python-headless>=4.8,<5'
+      - name: Mathematical tests and deterministic Selective Search
+        run: python -u src/e41_ss_cslbp.py --self-test
+      - name: Download public Kaggle dataset
+        run: |
+          python - <<'PY'
+          import kagglehub
+          from pathlib import Path
+          source=Path(kagglehub.dataset_download('liugalhigh/beach-bird'))
+          roots=[p.parent.parent for p in source.rglob('images/train') if p.is_dir() and (p.parent.parent/'labels/train').is_dir() and (p.parent.parent/'images/val').is_dir()]
+          if source.joinpath('images/train').is_dir():roots.append(source)
+          roots=list(dict.fromkeys(roots))
+          if len(roots)!=1:raise RuntimeError(f"Bad roots: {roots}")
+          Path('dataset_root.txt').write_text(str(roots[0]))
+          PY
+      - name: Run corrected HOG and CS-LBP with stable SS and dense scan oracle
+        run: python -u src/e41_ss_cslbp.py --dataset "$(cat dataset_root.txt)" --output e41_results --train-n 45 --val-n 30 --cap 900
+      - name: Archive results and visual predictions
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e41-stable-ss-paper-descriptor-results
+          path: e41_results/
+          retention-days: 14
+          if-no-files-found: warn
